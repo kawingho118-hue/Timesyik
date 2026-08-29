@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>牢房糧食爭奪戰</title>
+  <!-- 引入 QR Code 生成套件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
     body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100dvh; padding: 16px; }
@@ -60,6 +62,15 @@
     .score-board { background: #0f172a; border: 1px solid #38bdf8; border-radius: 10px; padding: 12px; margin-bottom: 16px; text-align: left; }
     .tie-row { margin-bottom: 8px; background: #2e1065; padding: 8px; border-radius: 6px; border: 1px solid #6b21a8; }
     .event-banner { background: #312e81; border: 1px solid #6366f1; color: #e0e7ff; padding: 10px; border-radius: 8px; margin: 12px 0; font-size: 14px; text-align: left; }
+    
+    /* QR Code 樣式微調 */
+    .qrcode-box {
+      background: #fff;
+      padding: 12px;
+      border-radius: 8px;
+      display: inline-block;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
@@ -76,6 +87,13 @@
     <div id="host-screen" class="hidden">
       <h1>👑 主持人控制台</h1>
       <h2>房間 Code：<span id="room-code-display">----</span></h2>
+      
+      <!-- 📱 QR Code 掃描加入專屬區塊 -->
+      <div style="background:#0f172a; padding:12px; border-radius:10px; margin:12px 0; border:1px solid #334155;">
+        <p style="font-size:13px; color:#94a3b8; margin-bottom:6px;">📱 玩家掃描 QR Code 即可直接加入：</p>
+        <div id="qrcode" class="qrcode-box"></div>
+      </div>
+
       <p style="font-size:14px; color:#94a3b8;">已加入人數：<b id="player-count" style="color:#38bdf8;">0</b> 人（牢房總數：<span id="cell-count">0</span>）</p>
 
       <!-- 回合特殊事件提示 -->
@@ -277,7 +295,6 @@
     function initSelects(totalCells, disabledMinion = null) {
       currentDisabledMinion = disabledMinion;
 
-      // 【核心邏輯修正】：第 1 至 4 回合限定牢房數量等於總玩家人數（例如 6 人局只出現 1~6 號牢房）
       let maxSelectableCells = totalCells;
       if (currentRound >= 1 && currentRound <= 4 && totalPlayersCount > 0) {
         maxSelectableCells = totalPlayersCount;
@@ -334,7 +351,7 @@
     }
 
     function renderPlayerList(players) {
-      totalPlayersCount = players.length; // 更新全域玩家總人數記錄
+      totalPlayersCount = players.length;
       const sorted = [...players].sort((a,b) => b.totalScore - a.totalScore);
 
       const hostList = document.getElementById('player-list');
@@ -369,7 +386,6 @@
       }
     }
 
-    // 生成「牢房戰況卡片」的 HTML 模板
     function buildCellCardsHTML(round, bonusCell, totalCells, summary) {
       let resultHTML = `<h3 style="color:#f59e0b; margin-bottom:10px;">第 ${round} 回合戰果揭曉：</h3>`;
 
@@ -410,6 +426,17 @@
     socket.on('roomCreated', ({ roomId }) => {
       currentRoomId = roomId;
       document.getElementById('room-code-display').innerText = roomId;
+
+      // 📱 自動生成當前房間專屬的 QR Code
+      const qrcodeContainer = document.getElementById('qrcode');
+      qrcodeContainer.innerHTML = ""; // 清空舊的
+      
+      const joinUrl = `${window.location.origin}/?room=${roomId}`;
+      new QRCode(qrcodeContainer, {
+        text: joinUrl,
+        width: 150,
+        height: 150
+      });
     });
 
     socket.on('updateTakenCharacters', (takenIds) => {
@@ -439,18 +466,16 @@
     });
 
     socket.on('roundStarted', ({ round, totalCells, eventInfo }) => {
-      currentRound = round; // 更新當前回合數
+      currentRound = round;
       document.getElementById('round-display').innerText = `=== 第 ${round} 回合 ===`;
       document.getElementById('dispatch-section').classList.remove('hidden');
       document.getElementById('wait-msg').innerText = '';
 
-      // 顯示事件 banner
       document.getElementById('host-event-banner').classList.remove('hidden');
       document.getElementById('host-event-desc').innerText = eventInfo.description;
       document.getElementById('player-event-banner').classList.remove('hidden');
       document.getElementById('player-event-desc').innerText = eventInfo.description;
      
-      // 新回合開始時，清空雙方的戰力卡片與平手裁決區
       document.getElementById('player-results').innerHTML = '';
       document.getElementById('host-results').innerHTML = '';
       document.getElementById('tie-controls').innerHTML = '';
@@ -482,7 +507,6 @@
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('calc-round-btn').classList.add('hidden');
 
-      // 處理平手裁決區
       const tieBox = document.getElementById('host-tie-box');
       const tieControls = document.getElementById('tie-controls');
 
@@ -547,6 +571,19 @@
           );
         }
       });
+    });
+
+    // 💡 貼心功能：當玩家掃描 QR Code 點進來時，自動把房號填入輸入框
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomFromUrl = urlParams.get('room');
+      if (roomFromUrl) {
+        const roomInput = document.getElementById('room-code-input');
+        if (roomInput) {
+          roomInput.value = roomFromUrl;
+          onRoomCodeChange(); // 自動檢查角色狀態
+        }
+      }
     });
 
     socket.on('errorMessage', (msg) => alert(msg));

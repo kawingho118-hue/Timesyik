@@ -126,7 +126,7 @@ io.on('connection', (socket) => {
     room.dispatches = {};
     room.disabledMinions = {};
 
-    // 🎯 關鍵修改：牢房總數改為「當前玩家人數」（例：6人即為 1~6 號牢房）
+    // 🎯 牢房總數改為「當前玩家人數」（例：6人即為 1~6 號牢房）
     const totalCells = room.players.length;
 
     // 維護每間有效牢房基礎分數
@@ -198,7 +198,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
 
-    // 🎯 關鍵修改：以當前人數作為結算牢房數
     const totalCells = room.players.length;
     const summary = {};
     const tiesToResolve = [];
@@ -238,7 +237,6 @@ io.on('connection', (socket) => {
     if (room.round === 2) {
       let maxTotalInvaderPower = 0;
       for (let c = 1; c <= totalCells; c++) {
-        // 注意：只有原生牢房號碼落在 1~totalCells 內的玩家才會被視為該牢房屋主
         const owner = room.players.find(p => p.cellNo === c);
         const invaderEntries = Object.entries(cellPowerMap[c]).filter(([pId]) => !owner || pId !== owner.id);
         const invaderPowerSum = invaderEntries.reduce((sum, [_, pPower]) => sum + pPower, 0);
@@ -269,7 +267,6 @@ io.on('connection', (socket) => {
 
     for (let cellNo = 1; cellNo <= totalCells; cellNo++) {
       const powers = cellPowerMap[cellNo];
-      // 判斷此牢房是否有對應的原生屋主
       const owner = room.players.find(p => p.cellNo === cellNo);
       const ownerPower = owner && powers[owner.id] ? powers[owner.id] : 0;
       const currentPoints = actualCellPoints[cellNo];
@@ -280,8 +277,8 @@ io.on('connection', (socket) => {
         if (pObj && pPower > 0) {
           summary[cellNo].details.push({
             playerName: pObj.name,
-            cellNo: cellNo,         // 手下當前戰鬥的目標牢房號碼 (1 ~ totalCells)
-            fromCellNo: pObj.cellNo, // 玩家角色的原生固定牢房號碼 (例如 8)
+            cellNo: cellNo,
+            fromCellNo: pObj.cellNo,
             power: pPower
           });
         }
@@ -348,7 +345,6 @@ io.on('connection', (socket) => {
             let targetPower = 0;
 
             if (room.round === 4) {
-              // 第 4 回合：最低戰力勝出 (>=1)
               let minPower = Infinity;
               invaderEntries.forEach(([_, pPower]) => {
                 if (pPower < minPower) minPower = pPower;
@@ -358,7 +354,6 @@ io.on('connection', (socket) => {
                 .filter(([_, pPower]) => pPower === minPower)
                 .map(([pId]) => room.players.find(p => p.id === pId));
             } else {
-              // 一般回合：最高戰力勝出
               let maxPower = 0;
               invaderEntries.forEach(([_, pPower]) => {
                 if (pPower > maxPower) maxPower = pPower;
@@ -389,7 +384,7 @@ io.on('connection', (socket) => {
           continue;
         }
       } else {
-        // 無屋主牢房 (純入侵者搶奪無主空房)
+        // 無屋主牢房
         let targetPlayers = [];
         let targetPower = 0;
 
@@ -475,7 +470,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// 請確保使用 process.env.PORT
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
