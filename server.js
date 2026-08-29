@@ -45,26 +45,7 @@ io.on('connection', (socket) => {
       dispatches: {},
       cellAccumulatedScores: {},
       defendBonus: 50,
-      currentBonusCell: null,
-      disabledMinions: {}, // 第3回合：記錄各玩家被封印的手下 { socketId: minionPower }
-      isGameOver: false
-    };
-
-    socket.join(roomId);
-    socket.emit('roomCreated', { roomId, maxRounds: MAX_ROUNDS });
-  });
-
-  // 2. 查詢已被選走的角色
-  socket.on('checkTakenCharacters', (roomId) => {
-    const room = rooms[roomId];
-    if (room) {
-      socket.emit('updateTakenCharacters', room.takenCharacters);
-    } else {
-      socket.emit('updateTakenCharacters', []);
-    }
-  });
-
-  // 3. 玩家選擇角色並加入房間 (根據角色自動鎖定牢房號碼)
+      // 3. 玩家選擇角色並加入房間 (修正角色 ID 對應牢房號碼)
   socket.on('joinRoom', ({ roomId, characterId, playerName, characterAvatar }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit('errorMessage', '找不到該房間 Code！');
@@ -75,15 +56,49 @@ io.on('connection', (socket) => {
       return socket.emit('errorMessage', '該角色已被其他玩家選擇，請選擇其他角色！');
     }
 
-    // 🔒 根據角色名稱 (或 ID) 鎖定固定牢房號碼 (不影響盤面出現的牢房數量)
-    const cellNo = CHARACTER_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
+    // 🔒 建立角色 ID 到牢房號碼的對應對照表
+    const CHARACTER_ID_CELL_MAP = {
+      1: 1, // 拉不拉卡
+      2: 2, // 孫旺財
+      3: 3, // 唐三角
+      4: 4, // 雲蘇
+      5: 5, // 王元鵝
+      6: 6, // 諸葛帥坤
+      7: 7, // 小程
+      8: 8  // 李小白
+    };
+
+    // 取得對應的牢房號碼（支援用 ID 或名字對應）
+    const cellNo = CHARACTER_ID_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
 
     if (!cellNo) {
-      return socket.emit('errorMessage', '無效的角色名稱，找不到對應的牢房號碼！');
+      return socket.emit('errorMessage', '無效的角色，找不到對應的牢房號碼！');
     }
 
     const player = {
       id: socket.id,
+      characterId,
+      name: playerName,
+      avatar: characterAvatar,
+      cellNo: cellNo, // 角色專屬固定號碼
+      totalScore: 0
+    };
+
+    room.players.push(player);
+    room.takenCharacters.push(characterId);
+
+    socket.join(roomId);
+    socket.emit('joinSuccess', { 
+      roomId, 
+      playerName, 
+      characterAvatar, 
+      cellNo: player.cellNo, 
+      maxRounds: room.maxRounds 
+    });
+
+    io.to(roomId).emit('updatePlayers', room.players);
+    io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
+  });
       characterId,
       name: playerName,
       avatar: characterAvatar,
