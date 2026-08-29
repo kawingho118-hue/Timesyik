@@ -156,7 +156,7 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
-    // 廣播回合開始及事件 (帶入人數決定的 totalCells)
+    // 廣播回合開始及事件 (帶入當前 round，前端可依 round > 1 來隱藏 QR code)
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
@@ -271,14 +271,14 @@ io.on('connection', (socket) => {
       const ownerPower = owner && powers[owner.id] ? powers[owner.id] : 0;
       const currentPoints = actualCellPoints[cellNo];
 
-      // 紀錄該牢房的所有出兵詳情
+      // 紀錄該牢房的所有出兵詳情 (確保 fromCellNo 帶入該角色所屬牢房 pObj.cellNo)
       Object.entries(powers).forEach(([pId, pPower]) => {
         const pObj = room.players.find(p => p.id === pId);
         if (pObj && pPower > 0) {
           summary[cellNo].details.push({
             playerName: pObj.name,
-            cellNo: cellNo,
-            fromCellNo: pObj.cellNo,
+            cellNo: cellNo,            // 攻擊的目標牢房
+            fromCellNo: pObj.cellNo,   // 角色實際所屬的牢房
             power: pPower
           });
         }

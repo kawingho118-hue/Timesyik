@@ -89,7 +89,7 @@
       <h2>房間 Code：<span id="room-code-display">----</span></h2>
       
       <!-- 📱 QR Code 掃描加入專屬區塊 -->
-      <div style="background:#0f172a; padding:12px; border-radius:10px; margin:12px 0; border:1px solid #334155;">
+      <div id="qrcode-section" style="background:#0f172a; padding:12px; border-radius:10px; margin:12px 0; border:1px solid #334155;">
         <p style="font-size:13px; color:#94a3b8; margin-bottom:6px;">📱 玩家掃描 QR Code 即可直接加入：</p>
         <div id="qrcode" class="qrcode-box"></div>
       </div>
@@ -409,7 +409,8 @@
         if (info.details && info.details.length > 0) {
           resultHTML += `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>`;
           info.details.forEach(d => {
-            const playerCellDisplay = d.cellNo ? `(${d.cellNo}號牢房)` : '';
+            // 修正處：將括號內改為顯示該角色所屬的牢房 (fromCellNo)
+            const playerCellDisplay = d.fromCellNo ? `(${d.fromCellNo}號牢房)` : '';
             resultHTML += `• ${d.playerName} ${playerCellDisplay}: <b>${d.power} 點戰力</b><br>`;
           });
           resultHTML += `</div>`;
@@ -430,7 +431,7 @@
       // 📱 自動生成當前房間專屬的 QR Code
       const qrcodeContainer = document.getElementById('qrcode');
       qrcodeContainer.innerHTML = ""; // 清空舊的
-      
+     
       const joinUrl = `${window.location.origin}/?room=${roomId}`;
       new QRCode(qrcodeContainer, {
         text: joinUrl,
@@ -467,6 +468,10 @@
 
     socket.on('roundStarted', ({ round, totalCells, eventInfo }) => {
       currentRound = round;
+      
+      // 修正處：當第一回合或之後開始時，隱藏主持人的 QR code 區塊
+      document.getElementById('qrcode-section').classList.add('hidden');
+
       document.getElementById('round-display').innerText = `=== 第 ${round} 回合 ===`;
       document.getElementById('dispatch-section').classList.remove('hidden');
       document.getElementById('wait-msg').innerText = '';
