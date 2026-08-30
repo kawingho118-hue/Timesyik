@@ -55,7 +55,7 @@
     .player-item { background: #334155; padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
     .player-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; margin-right: 10px; border: 1px solid #38bdf8; }
     
-    /* 強化 hidden class 的權重 */
+    /* 隱藏元素用 */
     .hidden { display: none !important; }
 
     .badge { background: #f59e0b; color: #0f172a; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
@@ -401,7 +401,6 @@
         correctLevel: QRCode.CorrectLevel.H
       });
       
-      // 僅在房間剛建立時顯示 QR Code
       const qrSection = document.getElementById('qrcode-section');
       qrSection.classList.remove('hidden');
       qrSection.style.display = 'block';
@@ -449,14 +448,12 @@
     socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
       currentRound = round;
       
-      // 🔒 強制隱藏 QR Code 區塊
       const qrSection = document.getElementById('qrcode-section');
       if (qrSection) {
         qrSection.classList.add('hidden');
         qrSection.style.display = 'none';
       }
 
-      // 主持人介面更新
       document.getElementById('start-round-btn').classList.add('hidden');
       document.getElementById('calc-round-btn').classList.remove('hidden');
       document.getElementById('host-results').innerHTML = '';
@@ -470,7 +467,6 @@
         document.getElementById('host-event-banner').classList.add('hidden');
       }
 
-      // 玩家介面更新 (開啟新一輪遊戲面板)
       document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
@@ -520,7 +516,8 @@
       function renderCards(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
-        container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">📋 第 ${round} 回合結算結果：</h3>`;
+        // 📌 修改 1：「📋 第 X 回合結算結果」改為「第 X 回合戰果揭曉」
+        container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">第 ${round} 回合戰果揭曉：</h3>`;
 
         for (let i = 1; i <= totalCells; i++) {
           const info = summary[i];
@@ -528,26 +525,31 @@
           let statusText = '';
           
           if (info.status === 'WIN') {
-            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 勝出者：${info.winnerName} (${info.power} 點戰力)</span>`;
+            // 📌 修改 3：改為「🏆 [角色](X 點戰力) 獨得 X 糧食」
+            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${info.winnerName}(${info.power} 點戰力) 獨得 ${info.points} 糧食</span>`;
           } else if (info.status === 'TIE') {
             statusText = `<span style="color:#c084fc; font-weight:bold;">⚖️ 平手待裁決 (${info.power} 點戰力)</span>`;
           } else {
-            statusText = `<span style="color:#94a3b8;">⚪ 無人爭奪 / 糧食累積中</span>`;
+            // 📌 修改 4：「⚪無人爭奪/糧食累積中」改為「⚪無人爭奪」
+            statusText = `<span style="color:#94a3b8;">⚪無人爭奪</span>`;
           }
 
           let detailsHtml = '';
           if (info.details && info.details.length > 0) {
-            detailsHtml = `<div class="detail-list"><b>派遣詳情：</b><br>` + 
+            // 📌 修改 5：「派遣詳情」改為「⚔️ 各玩家派駐戰力分佈」
+            detailsHtml = `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>` + 
               info.details.map(d => `• ${d.playerName} (來自 ${d.fromCellNo} 號牢房)：派出 ${d.power} 點戰力`).join('<br>') + 
               `</div>`;
           } else {
-            detailsHtml = `<div class="detail-list">無玩家派遣手下至此牢房</div>`;
+            // 📌 修改 6：「無玩家派遣手下至此牢房」改為「⚔️無玩家派駐戰力」
+            detailsHtml = `<div class="detail-list">⚔️無玩家派駐戰力</div>`;
           }
 
           container.innerHTML += `
             <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="font-size:16px;">🏰 ${i} 號牢房</b>
+                <!-- 📌 修改 2：「🏰 X 號牢房」改為「📍 X 號牢房」 -->
+                <b style="font-size:16px;">📍 ${i} 號牢房</b>
                 <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
               </div>
               <div>${statusText}</div>

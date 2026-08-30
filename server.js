@@ -151,7 +151,8 @@ io.on('connection', (socket) => {
     // 事件設定
     let eventInfo = { round: room.round, description: '' };
     if (room.round === 1) {
-      eventInfo.description = '無特殊事件，常規爭奪！';
+      // 📌 修改 7：將「無特殊事件，常規爭奪！」改為「無特殊事件」
+      eventInfo.description = '無特殊事件';
     } else if (room.round === 2) {
       eventInfo.description = '🔥 雙倍食糧事件：本回合中，搶奪者總和戰力最高的牢房糧食分數翻倍（x2）！';
     } else if (room.round === 3) {
@@ -293,7 +294,7 @@ io.on('connection', (socket) => {
           if (ownerPower > 0) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (獨守成功 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
             summary[cellNo].power = ownerPower;
           } else {
             summary[cellNo].status = 'NONE';
@@ -309,7 +310,7 @@ io.on('connection', (socket) => {
           if (ownerPower > invaderPower) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (防守成功 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else if (invaderPower > ownerPower) {
@@ -334,7 +335,7 @@ io.on('connection', (socket) => {
           if (ownerPower >= totalInvaderPower) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (擊退所有搶奪者 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
@@ -365,7 +366,7 @@ io.on('connection', (socket) => {
               const winner = targetInvaders[0];
               winner.totalScore += currentPoints;
               summary[cellNo].status = 'WIN';
-              summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+              summary[cellNo].winnerName = winner.name;
               summary[cellNo].power = targetPower;
               room.cellAccumulatedScores[cellNo] = 0;
             } else {
@@ -408,7 +409,7 @@ io.on('connection', (socket) => {
           const winner = targetPlayers[0];
           winner.totalScore += currentPoints;
           summary[cellNo].status = 'WIN';
-          summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+          summary[cellNo].winnerName = winner.name;
           summary[cellNo].power = targetPower;
           room.cellAccumulatedScores[cellNo] = 0;
         } else if (targetPlayers.length > 1) {
