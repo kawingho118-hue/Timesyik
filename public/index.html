@@ -448,9 +448,11 @@
       document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
     });
 
-    socket.on('playerRoundConfig', ({ disabledMinion }) => {
-      currentDisabledMinion = disabledMinion;
-      initSelects(totalPlayersCount, disabledMinion);
+    // 修復點：正確監聽與設定個別人生的回合配置 (包含禁用手下)
+    socket.on('playerRoundConfig', ({ disabledMinion, round }) => {
+      if (round) currentRound = round;
+      currentDisabledMinion = disabledMinion || null;
+      initSelects(totalPlayersCount, currentDisabledMinion);
     });
 
     socket.on('hostEventNotice', (eventInfo) => {
@@ -488,6 +490,12 @@
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
       
+      const submitBtn = document.getElementById('submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = '確認提交陣力';
+      }
+
       document.getElementById('dispatch-section').classList.remove('hidden');
       
       // 確保重置手下選擇選單

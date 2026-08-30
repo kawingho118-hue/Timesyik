@@ -492,6 +492,81 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('updatePlayers', room.players);
   });
 });
+// ==========================================
+// 解決第二/三/四回合玩家版面無反應的關鍵程式碼
+// ==========================================
+
+// 1. 監聽回合開始事件 (收到後端 startNextRound 廣播時觸發)
+socket.on('roundStarted', (data) => {
+  const { round, maxRounds, totalCells, eventInfo } = data;
+
+  // A. 更新回合顯示標題與事件
+  const roundTitle = document.getElementById('roundTitle');
+  if (roundTitle) roundTitle.innerText = `第 ${round} / ${maxRounds} 回合`;
+
+  const eventDesc = document.getElementById('eventDescription');
+  if (eventDesc) eventDesc.innerText = eventInfo.description || '';
+
+  // B. 隱藏等待結算的遮罩或提示區
+  const waitingOverlay = document.getElementById('waitingOverlay');
+  if (waitingOverlay) waitingOverlay.style.display = 'none';
+
+  // C. 解鎖並重置提交按鈕
+  const submitBtn = document.getElementById('submitMinionsBtn');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerText = '提交兵力分配';
+  }
+
+  // D. 清空並重新啟用手下選擇選單
+  resetAndEnableMinionInputs(totalCells);
+});
+
+// 2. 監聽玩家本回合配置 (處理第 3 回合封印手下等邏輯)
+socket.on('playerRoundConfig', (data) => {
+  const { disabledMinion, round } = data;
+
+  for (let power = 1; power <= 4; power++) {
+    const selectElem = document.getElementById(`minionSelect_${power}`);
+    const cardElem = document.getElementById(`minionCard_${power}`);
+
+    if (selectElem) {
+      selectElem.disabled = false;
+      selectElem.value = ""; // 清空上一回合的選擇
+    }
+
+    if (cardElem) {
+      cardElem.classList.remove('disabled-minion');
+    }
+
+    // 第 3 回合：禁用被封印的手下
+    if (round === 3 && disabledMinion === power) {
+      if (selectElem) {
+        selectElem.disabled = true;
+        selectElem.value = "";
+      }
+      if (cardElem) {
+        cardElem.classList.add('disabled-minion');
+      }
+    }
+  }
+});
+
+// 3. 重置並開放牢房選項的輔助函式 (可放在腳本最下方)
+function resetAndEnableMinionInputs(totalCells) {
+  for (let power = 1; power <= 4; power++) {
+    const selectElem = document.getElementById(`minionSelect_${power}`);
+    if (selectElem) {
+      selectElem.disabled = false;
+      
+      let optionsHTML = '<option value="">-- 請選擇派往牢房 --</option>';
+      for (let c = 1; c <= totalCells; c++) {
+        optionsHTML += `<option value="${c}">牢房 ${c}</option>`;
+      }
+      selectElem.innerHTML = optionsHTML;
+    }
+  }
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
