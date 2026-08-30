@@ -144,17 +144,11 @@ io.on('connection', (socket) => {
     const bonusCell = Math.floor(Math.random() * totalCells) + 1;
     room.currentBonusCell = bonusCell;
 
-        // 維護每間有效牢房基礎分數
-
+    // 每一回合開始時：每間牢房原本累積的分數 + 本回合固定 100 糧食（若為 Bonus 房則直接以 200 取代 100 基礎）
     for (let i = 1; i <= totalCells; i++) {
-      if (!room.cellAccumulatedScores[i])
-         {room.cellAccumulatedScores[i] = 100;}
-   }
-
-    // 隨機產生本回合 200 分 Bonus 牢房 (範圍：1~人數)
-    const bonusCell = Math.floor(Math.random() * totalCells) + 1;
-    room.currentBonusCell = bonusCell;
-
+      if (room.cellAccumulatedScores[i] === undefined) {
+        room.cellAccumulatedScores[i] = 0;
+      }
       const addedBase = (i === room.currentBonusCell) ? 200 : 100;
       room.cellAccumulatedScores[i] += addedBase;
     }

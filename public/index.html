@@ -110,9 +110,9 @@
         <p id="submit-progress" style="font-size:13px; color:#fde68a; margin-top:4px;">提交進度：0 / 0 人</p>
       </div>
 
-      <!-- 同戰力裁決區 -->
+      <!-- 同分裁決區 -->
       <div id="host-tie-box" class="hidden" style="margin-top:15px; text-align:left; background:#1e1b4b; padding:12px; border-radius:8px; border: 1px solid #a855f7;">
-        <h3 style="color:#a855f7;">⚖️ 同戰力裁決區：</h3>
+        <h3 style="color:#a855f7;">⚖️ 同分裁決區：</h3>
         <div id="tie-controls"></div>
         <button id="publish-score-btn" class="btn-success" onclick="publishUpdatedScores()" style="margin-top:10px;">🔄 更新並發布最新分數</button>
       </div>
@@ -120,7 +120,7 @@
       <!-- 戰況卡片同步顯示區 -->
       <div id="host-results" style="margin-top:15px; text-align:left;"></div>
 
-      <h3 style="margin-top:20px; text-align:left;">目前玩家總糧食排行榜：</h3>
+      <h3 style="margin-top:20px; text-align:left;">目前玩家總分排行榜：</h3>
       <ul id="player-list" class="player-list"></ul>
     </div>
 
@@ -151,7 +151,7 @@
       </div>
 
       <div class="score-board">
-        <h3 style="font-size:15px; color:#38bdf8; margin-bottom:8px;">🏆 即時玩家總糧食排行榜：</h3>
+        <h3 style="font-size:15px; color:#38bdf8; margin-bottom:8px;">🏆 即時玩家總分排行榜：</h3>
         <ul id="player-score-list" class="player-list" style="margin-top:0;"></ul>
       </div>
 
@@ -193,8 +193,8 @@
     const CHARACTERS = [
       { id: 1, name: '拉不拉卡', avatar: '/拉不拉卡.jpeg' },
       { id: 2, name: '孫旺財',   avatar: '/孫旺財.jpeg' },
-      { id: 3, name: '唐三角',   avatar: '/唐三角.jpeg' },
-      { id: 4, name: '雲蘇',     avatar: '/雲蘇.jpeg' },
+      { id: 3, name: '雲蘇',     avatar: '/云蘇.jpeg' },
+      { id: 4, name: '唐三角',   avatar: '/唐三角.jpeg' },
       { id: 5, name: '諸葛帥坤', avatar: '/諸葛帥坤.jpeg' },
       { id: 6, name: '王元鵝',   avatar: '/王元鵝.jpeg' },
       { id: 7, name: '小程',     avatar: '/小程.jpeg' },
