@@ -163,6 +163,8 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
+    // 廣播最新玩家列表與回合啟動事件給房間全體成員
+    io.to(roomId).emit('updatePlayers', room.players);
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
@@ -170,16 +172,20 @@ io.on('connection', (socket) => {
       eventInfo
     });
 
+    // 個別發送各玩家的特殊設定（如第3回合被封印的手下）
     room.players.forEach(p => {
       const disabledMinion = room.disabledMinions[p.id] || null;
-      io.to(p.id).emit('playerRoundConfig', { disabledMinion });
+      io.to(p.id).emit('playerRoundConfig', { disabledMinion, round: room.round });
     });
 
-    io.to(room.hostSocketId).emit('hostBonusNotice', {
-      bonusCell,
-      submittedCount: 0,
-      totalPlayers: room.players.length
-    });
+    // 通知主持人
+    if (room.hostSocketId) {
+      io.to(room.hostSocketId).emit('hostBonusNotice', {
+        bonusCell,
+        submittedCount: 0,
+        totalPlayers: room.players.length
+      });
+    }
   });
 
   // 5. 玩家提交兵力分配
