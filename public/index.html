@@ -55,7 +55,6 @@
     .player-item { background: #334155; padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
     .player-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; margin-right: 10px; border: 1px solid #38bdf8; }
     
-    /* 隱藏元素用 */
     .hidden { display: none !important; }
 
     .badge { background: #f59e0b; color: #0f172a; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
@@ -89,7 +88,6 @@
       <h1>👑 主持人控制台</h1>
       <h2>房間 Code：<span id="room-code-display">----</span></h2>
       
-      <!-- 📱 QR Code 掃描區塊（預設隱藏） -->
       <div id="qrcode-section" class="hidden" style="display:none; background:#0f172a; padding:12px; border-radius:10px; margin:12px 0; border:1px solid #334155;">
         <p style="font-size:13px; color:#94a3b8; margin-bottom:6px;">📱 玩家掃描 QR Code 即可直接加入：</p>
         <div id="qrcode" class="qrcode-box"></div>
@@ -97,7 +95,6 @@
 
       <p style="font-size:14px; color:#94a3b8;">已加入人數：<b id="player-count" style="color:#38bdf8;">0</b> 人（牢房總數：<span id="cell-count">0</span>）</p>
 
-      <!-- 回合特殊事件提示 -->
       <div id="host-event-banner" class="event-banner hidden">
         📢 <b>當前開啟回合特殊事件：</b><span id="host-event-desc">--</span>
       </div>
@@ -105,20 +102,17 @@
       <button id="start-round-btn" onclick="startNextRound()">開始第 1 回合</button>
       <button id="calc-round-btn" class="btn-danger hidden" onclick="triggerCalculateResults()">📊 執行本回合結算</button>
 
-      <!-- 主持人機密畫面 -->
       <div id="host-secret-box" class="hidden" style="background:#451a03; border: 1px solid #f59e0b; padding:10px; border-radius:8px; margin-top:12px;">
         🔒 主持人機密：本回合額外 200 糧食隱藏在 <b id="secret-bonus-cell" style="color:#f59e0b; font-size:18px;">-</b> 號牢房！
         <p id="submit-progress" style="font-size:13px; color:#fde68a; margin-top:4px;">提交進度：0 / 0 人</p>
       </div>
 
-      <!-- 同分裁決區 -->
       <div id="host-tie-box" class="hidden" style="margin-top:15px; text-align:left; background:#1e1b4b; padding:12px; border-radius:8px; border: 1px solid #a855f7;">
         <h3 style="color:#a855f7;">⚖️ 同分裁決區：</h3>
         <div id="tie-controls"></div>
         <button id="publish-score-btn" class="btn-success" onclick="publishUpdatedScores()" style="margin-top:10px;">🔄 更新並發布最新分數</button>
       </div>
 
-      <!-- 戰況卡片同步顯示區 -->
       <div id="host-results" style="margin-top:15px; text-align:left;"></div>
 
       <h3 style="margin-top:20px; text-align:left;">目前玩家總分排行榜：</h3>
@@ -135,7 +129,6 @@
       <label for="character-select">選擇您的角色：</label>
       <select id="character-select" onchange="onCharacterChange()"></select>
 
-      <!-- 角色頭像預覽 -->
       <div class="avatar-preview-box">
         <img id="preview-avatar" src="" alt="角色頭像" class="avatar-img">
         <div id="preview-name" class="avatar-name"></div>
@@ -160,12 +153,10 @@
         <p id="round-display">等待主持人開始遊戲...</p>
       </div>
 
-      <!-- 玩家事件提示 -->
       <div id="player-event-banner" class="event-banner hidden">
         📢 <b>當前開啟特殊事件：</b><span id="player-event-desc">--</span>
       </div>
 
-      <!-- 分配 4 位手下的區域 -->
       <div id="dispatch-section" class="hidden">
         <p style="margin-bottom:8px; font-weight:bold;">分配你的 4 位手下（手下號碼 = 戰鬥力）：</p>
         <div class="minion-row" id="row-m1"><span>手下 1（1點）：</span><select id="m1" style="width:60%; margin:0;"></select></div>
@@ -177,7 +168,6 @@
 
       <p id="wait-msg" style="color:#94a3b8; margin-top:12px;"></p>
       
-      <!-- 玩家端戰況卡片顯示區 -->
       <div id="player-results" style="margin-top:15px; text-align:left;"></div>
     </div>
   </div>
@@ -471,7 +461,6 @@
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
       
-      // 🔄 修正問題 2：切換至新回合時，重置玩家端的派駐介面
       document.getElementById('dispatch-section').classList.remove('hidden');
       initSelects(totalCells, currentDisabledMinion);
 
@@ -527,11 +516,11 @@
           let statusText = '';
           
           if (info.status === 'WIN') {
-            // 🔄 修正問題 1：根據防守成功還是搶奪成功顯示對應文字
             const isDefenseSuccess = Number(info.winnerCellNo) === Number(i);
+            const roleTitle = isDefenseSuccess ? '房主' : '搶奪者';
             const actionText = isDefenseSuccess ? '防守成功!' : '搶奪成功!';
             
-            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${info.winnerName}(${info.power} 點戰力) ${actionText} 獨得 ${info.points} 糧食!</span>`;
+            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${roleTitle} ${info.winnerName} (${info.power} 點戰力) ${actionText} 獨得 ${info.points} 糧食!</span>`;
           } else if (info.status === 'TIE') {
             statusText = `<span style="color:#c084fc; font-weight:bold;">⚖️ 平手待裁決 (${info.power} 點戰力)</span>`;
           } else {
@@ -547,10 +536,13 @@
             detailsHtml = `<div class="detail-list">⚔️無玩家派駐戰力</div>`;
           }
 
+          // 標頭顯示牢房號碼與房主名字
+          const cellTitleName = info.ownerName ? ` (${info.ownerName})` : '';
+
           container.innerHTML += `
             <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="font-size:16px;">📍 ${i} 號牢房</b>
+                <b style="font-size:16px;">📍 ${i} 號牢房${cellTitleName}</b>
                 <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
               </div>
               <div>${statusText}</div>

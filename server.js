@@ -45,7 +45,7 @@ io.on('connection', (socket) => {
       dispatches: {},
       cellAccumulatedScores: {}, // 記錄各牢房當前累積的糧食
       currentBonusCell: null,
-      disabledMinions: {}, // 第3回合：記錄各玩家被封印的手下 { socketId: minionPower }
+      disabledMinions: {}, // 第3回合：記錄各玩家被封印的手下
       isGameOver: false
     };
 
@@ -252,9 +252,11 @@ io.on('connection', (socket) => {
     }
 
     for (let i = 1; i <= totalCells; i++) {
+      const cellOwner = room.players.find(p => p.cellNo === i);
       summary[i] = {
         points: actualCellPoints[i],
         isDouble: i === doubleBonusCellNo,
+        ownerName: cellOwner ? cellOwner.name : '',
         status: 'NONE',
         winnerName: '',
         winnerCellNo: null,
