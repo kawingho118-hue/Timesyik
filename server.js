@@ -151,7 +151,6 @@ io.on('connection', (socket) => {
     // 事件設定
     let eventInfo = { round: room.round, description: '' };
     if (room.round === 1) {
-      // 📌 修改 7：將「無特殊事件，常規爭奪！」改為「無特殊事件」
       eventInfo.description = '無特殊事件';
     } else if (room.round === 2) {
       eventInfo.description = '🔥 雙倍食糧事件：本回合中，搶奪者總和戰力最高的牢房糧食分數翻倍（x2）！';
@@ -258,6 +257,7 @@ io.on('connection', (socket) => {
         isDouble: i === doubleBonusCellNo,
         status: 'NONE',
         winnerName: '',
+        winnerCellNo: null,
         power: 0,
         details: []
       };
@@ -295,6 +295,7 @@ io.on('connection', (socket) => {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerCellNo = owner.cellNo;
             summary[cellNo].power = ownerPower;
           } else {
             summary[cellNo].status = 'NONE';
@@ -311,12 +312,14 @@ io.on('connection', (socket) => {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerCellNo = owner.cellNo;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else if (invaderPower > ownerPower) {
             invader.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = invader.name;
+            summary[cellNo].winnerCellNo = invader.cellNo;
             summary[cellNo].power = invaderPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
@@ -336,6 +339,7 @@ io.on('connection', (socket) => {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerCellNo = owner.cellNo;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
@@ -367,6 +371,7 @@ io.on('connection', (socket) => {
               winner.totalScore += currentPoints;
               summary[cellNo].status = 'WIN';
               summary[cellNo].winnerName = winner.name;
+              summary[cellNo].winnerCellNo = winner.cellNo;
               summary[cellNo].power = targetPower;
               room.cellAccumulatedScores[cellNo] = 0;
             } else {
@@ -410,6 +415,7 @@ io.on('connection', (socket) => {
           winner.totalScore += currentPoints;
           summary[cellNo].status = 'WIN';
           summary[cellNo].winnerName = winner.name;
+          summary[cellNo].winnerCellNo = winner.cellNo;
           summary[cellNo].power = targetPower;
           room.cellAccumulatedScores[cellNo] = 0;
         } else if (targetPlayers.length > 1) {

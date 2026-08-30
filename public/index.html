@@ -470,7 +470,10 @@
       document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
+      
+      // 🔄 修正問題 2：切換至新回合時，重置玩家端的派駐介面
       document.getElementById('dispatch-section').classList.remove('hidden');
+      initSelects(totalCells, currentDisabledMinion);
 
       if (eventInfo && eventInfo.description) {
         document.getElementById('player-event-desc').innerText = eventInfo.description;
@@ -516,7 +519,6 @@
       function renderCards(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
-        // 📌 修改 1：「📋 第 X 回合結算結果」改為「第 X 回合戰果揭曉」
         container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">第 ${round} 回合戰果揭曉：</h3>`;
 
         for (let i = 1; i <= totalCells; i++) {
@@ -525,30 +527,29 @@
           let statusText = '';
           
           if (info.status === 'WIN') {
-            // 📌 修改 3：改為「🏆 [角色](X 點戰力) 獨得 X 糧食」
-            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${info.winnerName}(${info.power} 點戰力) 獨得 ${info.points} 糧食</span>`;
+            // 🔄 修正問題 1：根據防守成功還是搶奪成功顯示對應文字
+            const isDefenseSuccess = Number(info.winnerCellNo) === Number(i);
+            const actionText = isDefenseSuccess ? '防守成功!' : '搶奪成功!';
+            
+            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${info.winnerName}(${info.power} 點戰力) ${actionText} 獨得 ${info.points} 糧食!</span>`;
           } else if (info.status === 'TIE') {
             statusText = `<span style="color:#c084fc; font-weight:bold;">⚖️ 平手待裁決 (${info.power} 點戰力)</span>`;
           } else {
-            // 📌 修改 4：「⚪無人爭奪/糧食累積中」改為「⚪無人爭奪」
             statusText = `<span style="color:#94a3b8;">⚪無人爭奪</span>`;
           }
 
           let detailsHtml = '';
           if (info.details && info.details.length > 0) {
-            // 📌 修改 5：「派遣詳情」改為「⚔️ 各玩家派駐戰力分佈」
             detailsHtml = `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>` + 
               info.details.map(d => `• ${d.playerName} (來自 ${d.fromCellNo} 號牢房)：派出 ${d.power} 點戰力`).join('<br>') + 
               `</div>`;
           } else {
-            // 📌 修改 6：「無玩家派遣手下至此牢房」改為「⚔️無玩家派駐戰力」
             detailsHtml = `<div class="detail-list">⚔️無玩家派駐戰力</div>`;
           }
 
           container.innerHTML += `
             <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <!-- 📌 修改 2：「🏰 X 號牢房」改為「📍 X 號牢房」 -->
                 <b style="font-size:16px;">📍 ${i} 號牢房</b>
                 <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
               </div>
