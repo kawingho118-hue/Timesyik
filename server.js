@@ -447,24 +447,29 @@ io.on('connection', (socket) => {
   });
 
   // 7. 手動裁決平手
-  socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
-    const room = rooms[roomId];
-    if (!room) return;
+  socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
+      currentRound = round;
+      
+      // 📌 新增：開始回合後（包括第1回合開始），立即隱藏 QR Code 區塊
+      const qrSection = document.getElementById('qrcode-section');
+      if (qrSection) {
+        qrSection.classList.add('hidden');
+      }
 
-    const winner = room.players.find(p => p.id === winnerPlayerId);
-    if (winner) {
-      let points = room.cellAccumulatedScores[cellNo] || 0;
-      winner.totalScore += points;
-      room.cellAccumulatedScores[cellNo] = 0;
+      // 主持人介面更新
+      document.getElementById('start-round-btn').classList.add('hidden');
+      document.getElementById('calc-round-btn').classList.remove('hidden');
+      document.getElementById('host-results').innerHTML = '';
+      document.getElementById('host-tie-box').classList.add('hidden');
+      document.getElementById('tie-controls').innerHTML = '';
 
-      io.to(roomId).emit('tieResolved', {
-        cellNo,
-        winnerName: winner.name,
-        players: room.players
-      });
-    }
-  });
-
+      if (eventInfo && eventInfo.description) {
+        document.getElementById('host-event-desc').innerText = eventInfo.description;
+        document.getElementById('host-event-banner').classList.remove('hidden');
+      } else {
+        document.getElementById('host-event-banner').classList.add('hidden');
+      }
+      
   // 8. 廣播最新分數
   socket.on('publishUpdatedScores', ({ roomId }) => {
     const room = rooms[roomId];
