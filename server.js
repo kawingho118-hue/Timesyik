@@ -11,7 +11,7 @@ app.use(express.static('public'));
 const rooms = {};
 const MAX_ROUNDS = 4;
 
-// 🔒 1. 角色與牢房號碼固定鎖定映射表
+// 🔒 角色與牢房號碼固定鎖定映射表
 const CHARACTER_CELL_MAP = {
   '拉不拉卡': 1,
   '孫旺財': 2,
@@ -21,6 +21,17 @@ const CHARACTER_CELL_MAP = {
   '諸葛帥坤': 6,
   '小程': 7,
   '李小白': 8
+};
+
+const CHARACTER_ID_CELL_MAP = {
+  1: 1, // 拉不拉卡
+  2: 2, // 孫旺財
+  3: 3, // 唐三角
+  4: 4, // 雲蘇
+  5: 5, // 王元鵝
+  6: 6, // 諸葛帥坤
+  7: 7, // 小程
+  8: 8  // 李小白
 };
 
 function generateRoomCode() {
@@ -69,22 +80,12 @@ io.on('connection', (socket) => {
     if (!room) return socket.emit('errorMessage', '找不到該房間 Code！');
     if (room.isGameOver) return socket.emit('errorMessage', '該房間的遊戲已經結束！');
 
-    if (room.takenCharacters.includes(characterId)) {
+    const charIdNum = parseInt(characterId);
+    if (room.takenCharacters.includes(charIdNum)) {
       return socket.emit('errorMessage', '該角色已被其他玩家選擇，請選擇其他角色！');
     }
 
-    const CHARACTER_ID_CELL_MAP = {
-      1: 1, // 拉不拉卡
-      2: 2, // 孫旺財
-      3: 3, // 雲蘇
-      4: 4, // 唐三角
-      5: 5, // 諸葛帥坤
-      6: 6, // 王元鵝
-      7: 7, // 小程
-      8: 8  // 李小白
-    };
-
-    const cellNo = CHARACTER_ID_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
+    const cellNo = CHARACTER_ID_CELL_MAP[charIdNum] || CHARACTER_CELL_MAP[playerName];
 
     if (!cellNo) {
       return socket.emit('errorMessage', '無效的角色，找不到對應的牢房號碼！');
@@ -92,7 +93,7 @@ io.on('connection', (socket) => {
 
     const player = {
       id: socket.id,
-      characterId,
+      characterId: charIdNum,
       name: playerName,
       avatar: characterAvatar,
       cellNo: cellNo,
@@ -100,7 +101,7 @@ io.on('connection', (socket) => {
     };
 
     room.players.push(player);
-    room.takenCharacters.push(characterId);
+    room.takenCharacters.push(charIdNum);
 
     socket.join(roomId);
     socket.emit('joinSuccess', { 
@@ -115,7 +116,7 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
   });
 
-  // 4. 開始下一回合 (修復玩家版面沒反應問題)
+  // 4. 開始下一回合
   socket.on('startNextRound', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || room.players.length === 0) return;
@@ -200,11 +201,13 @@ io.on('connection', (socket) => {
     const submittedCount = Object.keys(room.dispatches).length;
     const totalPlayers = room.players.length;
 
-    io.to(room.hostSocketId).emit('playerSubmittedNotice', {
-      playerId: socket.id,
-      submittedCount,
-      totalPlayers
-    });
+    if (room.hostSocketId) {
+      io.to(room.hostSocketId).emit('playerSubmittedNotice', {
+        playerId: socket.id,
+        submittedCount,
+        totalPlayers
+      });
+    }
   });
 
   // 6. 執行回合結算
@@ -464,7 +467,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. 手動裁決平手 (無彈出式通知，僅靜默更新數據與排行榜)
+  // 7. 手動裁決平手
   socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -475,7 +478,6 @@ io.on('connection', (socket) => {
       winner.totalScore += points;
       room.cellAccumulatedScores[cellNo] = 0;
 
-      // 靜默廣播最新分數，不發送會觸發 Alert/Modal 的事件
       io.to(roomId).emit('tieResolved', {
         cellNo,
         winnerName: winner.name,
@@ -492,81 +494,6 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('updatePlayers', room.players);
   });
 });
-// ==========================================
-// 解決第二/三/四回合玩家版面無反應的關鍵程式碼
-// ==========================================
-
-// 1. 監聽回合開始事件 (收到後端 startNextRound 廣播時觸發)
-socket.on('roundStarted', (data) => {
-  const { round, maxRounds, totalCells, eventInfo } = data;
-
-  // A. 更新回合顯示標題與事件
-  const roundTitle = document.getElementById('roundTitle');
-  if (roundTitle) roundTitle.innerText = `第 ${round} / ${maxRounds} 回合`;
-
-  const eventDesc = document.getElementById('eventDescription');
-  if (eventDesc) eventDesc.innerText = eventInfo.description || '';
-
-  // B. 隱藏等待結算的遮罩或提示區
-  const waitingOverlay = document.getElementById('waitingOverlay');
-  if (waitingOverlay) waitingOverlay.style.display = 'none';
-
-  // C. 解鎖並重置提交按鈕
-  const submitBtn = document.getElementById('submitMinionsBtn');
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.innerText = '提交兵力分配';
-  }
-
-  // D. 清空並重新啟用手下選擇選單
-  resetAndEnableMinionInputs(totalCells);
-});
-
-// 2. 監聽玩家本回合配置 (處理第 3 回合封印手下等邏輯)
-socket.on('playerRoundConfig', (data) => {
-  const { disabledMinion, round } = data;
-
-  for (let power = 1; power <= 4; power++) {
-    const selectElem = document.getElementById(`minionSelect_${power}`);
-    const cardElem = document.getElementById(`minionCard_${power}`);
-
-    if (selectElem) {
-      selectElem.disabled = false;
-      selectElem.value = ""; // 清空上一回合的選擇
-    }
-
-    if (cardElem) {
-      cardElem.classList.remove('disabled-minion');
-    }
-
-    // 第 3 回合：禁用被封印的手下
-    if (round === 3 && disabledMinion === power) {
-      if (selectElem) {
-        selectElem.disabled = true;
-        selectElem.value = "";
-      }
-      if (cardElem) {
-        cardElem.classList.add('disabled-minion');
-      }
-    }
-  }
-});
-
-// 3. 重置並開放牢房選項的輔助函式 (可放在腳本最下方)
-function resetAndEnableMinionInputs(totalCells) {
-  for (let power = 1; power <= 4; power++) {
-    const selectElem = document.getElementById(`minionSelect_${power}`);
-    if (selectElem) {
-      selectElem.disabled = false;
-      
-      let optionsHTML = '<option value="">-- 請選擇派往牢房 --</option>';
-      for (let c = 1; c <= totalCells; c++) {
-        optionsHTML += `<option value="${c}">牢房 ${c}</option>`;
-      }
-      selectElem.innerHTML = optionsHTML;
-    }
-  }
-}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

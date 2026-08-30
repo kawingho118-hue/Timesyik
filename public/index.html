@@ -19,6 +19,7 @@
 
     button { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #7dd3fc; }
+    button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
     
     .btn-secondary { background: #334155; color: #fff; }
     .btn-secondary:hover { background: #475569; }
@@ -194,7 +195,6 @@
 
     let takenCharacterIds = [];
 
-    // 自動檢查 URL 是否帶有房間 Code (如 ?room=1234)
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
@@ -293,17 +293,29 @@
       });
     }
 
+    // 重置派駐區面板狀態 (確保按鈕與選單完全解鎖)
+    function resetDispatchForm() {
+      document.getElementById('dispatch-section').classList.remove('hidden');
+      document.getElementById('wait-msg').innerText = '';
+      
+      const submitBtn = document.getElementById('submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = '確認提交陣容';
+      }
+    }
+
     function initSelects(totalCells, disabledMinion = null) {
       currentDisabledMinion = disabledMinion;
 
-      let maxSelectableCells = totalCells;
-      if (currentRound >= 1 && currentRound <= 4 && totalPlayersCount > 0) {
-        maxSelectableCells = totalPlayersCount;
-      }
+      let maxSelectableCells = totalCells || totalPlayersCount;
+      if (maxSelectableCells <= 0) maxSelectableCells = 8; // 安全預設值
 
-      [1,2,3,4].forEach(num => {
+      [1, 2, 3, 4].forEach(num => {
         const select = document.getElementById(`m${num}`);
         const row = document.getElementById(`row-m${num}`);
+        if (!select || !row) return;
+
         select.innerHTML = '';
         
         if (disabledMinion === num) {
@@ -313,8 +325,11 @@
         } else {
           row.classList.remove('minion-disabled');
           select.disabled = false;
-          for(let i = 1; i <= maxSelectableCells; i++) {
-            select.innerHTML += `<option value="${i}">前往 ${i} 號牢房</option>`;
+          for (let i = 1; i <= maxSelectableCells; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `前往 ${i} 號牢房`;
+            select.appendChild(opt);
           }
         }
       });
@@ -336,7 +351,8 @@
       const dispatchMap = {};
       [1, 2, 3, 4].forEach(num => {
         if (currentDisabledMinion !== num) {
-          dispatchMap[num] = parseInt(document.getElementById(`m${num}`).value);
+          const val = document.getElementById(`m${num}`).value;
+          dispatchMap[num] = parseInt(val);
         }
       });
 
@@ -351,7 +367,9 @@
     }
 
     function renderPlayerList(players) {
+      if (!players || !Array.isArray(players)) return;
       totalPlayersCount = players.length;
+
       const sorted = [...players].sort((a,b) => b.totalScore - a.totalScore);
 
       const hostList = document.getElementById('player-list');
@@ -448,10 +466,12 @@
       document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
     });
 
-    // 修復點：正確監聽與設定個別人生的回合配置 (包含禁用手下)
+    // 接收個別人生的回合配置 (修正解鎖點)
     socket.on('playerRoundConfig', ({ disabledMinion, round }) => {
       if (round) currentRound = round;
-      currentDisabledMinion = disabledMinion || null;
+      currentDisabledMinion = (disabledMinion !== undefined && disabledMinion !== null) ? disabledMinion : null;
+      
+      resetDispatchForm();
       initSelects(totalPlayersCount, currentDisabledMinion);
     });
 
@@ -485,20 +505,11 @@
         document.getElementById('host-event-banner').classList.add('hidden');
       }
 
-      // 玩家介面完全重置與開放
+      // 玩家介面徹底重置與開放
       document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
-      document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
       
-      const submitBtn = document.getElementById('submit-btn');
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerText = '確認提交陣力';
-      }
-
-      document.getElementById('dispatch-section').classList.remove('hidden');
-      
-      // 確保重置手下選擇選單
+      resetDispatchForm();
       initSelects(totalCells || totalPlayersCount, currentDisabledMinion);
 
       if (eventInfo && eventInfo.description) {
@@ -549,6 +560,8 @@
 
         for (let i = 1; i <= totalCells; i++) {
           const info = summary[i];
+          if (!info) continue;
+
           const isBonus = i === bonusCell;
           let statusText = '';
           
@@ -593,7 +606,6 @@
       document.getElementById('game-status-box').innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round} 回合結算完成！</p>`;
     });
 
-    // 處理平手後，靜默更新排行榜與狀態，不跳出任何彈出視窗 Alert
     socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
       renderPlayerList(players);
     });
