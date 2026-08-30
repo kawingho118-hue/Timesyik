@@ -409,7 +409,6 @@
         if (info.details && info.details.length > 0) {
           resultHTML += `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>`;
           info.details.forEach(d => {
-            // 修正處：將括號內改為顯示該角色所屬的牢房 (fromCellNo)
             const playerCellDisplay = d.fromCellNo ? `(${d.fromCellNo}號牢房)` : '';
             resultHTML += `• ${d.playerName} ${playerCellDisplay}: <b>${d.power} 點戰力</b><br>`;
           });
@@ -428,9 +427,8 @@
       currentRoomId = roomId;
       document.getElementById('room-code-display').innerText = roomId;
 
-      // 📱 自動生成當前房間專屬的 QR Code
       const qrcodeContainer = document.getElementById('qrcode');
-      qrcodeContainer.innerHTML = ""; // 清空舊的
+      qrcodeContainer.innerHTML = "";
      
       const joinUrl = `${window.location.origin}/?room=${roomId}`;
       new QRCode(qrcodeContainer, {
@@ -469,7 +467,6 @@
     socket.on('roundStarted', ({ round, totalCells, eventInfo }) => {
       currentRound = round;
       
-      // 修正處：當第一回合或之後開始時，隱藏主持人的 QR code 區塊
       document.getElementById('qrcode-section').classList.add('hidden');
 
       document.getElementById('round-display').innerText = `=== 第 ${round} 回合 ===`;
@@ -578,7 +575,6 @@
       });
     });
 
-    // 💡 貼心功能：當玩家掃描 QR Code 點進來時，自動把房號填入輸入框
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const roomFromUrl = urlParams.get('room');
@@ -586,7 +582,7 @@
         const roomInput = document.getElementById('room-code-input');
         if (roomInput) {
           roomInput.value = roomFromUrl;
-          onRoomCodeChange(); // 自動檢查角色狀態
+          onRoomCodeChange();
         }
       }
     });
