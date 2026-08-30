@@ -2,455 +2,596 @@
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>牢房糧食爭奪戰</title>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <!-- 引入 QR Code 生成套件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    :root {
-      --bg-color: #0f172a;
-      --card-bg: #1e293b;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --danger: #ef4444;
-      --success: #22c55e;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: var(--bg-color);
-      color: var(--text-main);
-      margin: 0;
-      padding: 20px;
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100dvh; padding: 16px; }
+    .container { width: 100%; max-width: 500px; background: #1e293b; padding: 24px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h1 { margin-bottom: 16px; font-size: 22px; color: #38bdf8; }
+    h2 { margin-bottom: 12px; font-size: 18px; color: #f59e0b; }
+   
+    label { display: block; text-align: left; font-size: 14px; color: #94a3b8; margin-top: 12px; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 16px; text-align: center; outline: none; }
+    input:focus, select:focus { border-color: #38bdf8; }
+
+    button { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #7dd3fc; }
+   
+    .btn-secondary { background: #334155; color: #fff; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-danger:hover { background: #f87171; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-success:hover { background: #4ade80; }
+
+    .avatar-preview-box {
+      margin: 16px 0;
+      padding: 16px;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
+      justify-content: center;
     }
-    h1, h2, h3 { margin-top: 0; }
-    .container {
-      width: 100%;
-      max-width: 600px;
-      background: var(--card-bg);
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      margin-bottom: 20px;
+    .avatar-img {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+      margin-bottom: 8px;
     }
+    .avatar-name { font-size: 18px; font-weight: bold; color: #f8fafc; }
+
+    .minion-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; background: #0f172a; padding: 10px; border-radius: 8px; }
+    .minion-disabled { opacity: 0.5; background: #334155; text-decoration: line-through; }
+    .player-list { list-style: none; text-align: left; margin-top: 12px; }
+    .player-item { background: #334155; padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .player-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; margin-right: 10px; border: 1px solid #38bdf8; }
+   
     .hidden { display: none !important; }
-    button {
-      background-color: var(--accent);
-      color: white;
-      border: none;
-      padding: 10px 18px;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: background 0.2s;
-      width: 100%;
-      margin-top: 10px;
-    }
-    button:hover { background-color: var(--accent-hover); }
-    input, select {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0 16px 0;
-      border-radius: 6px;
-      border: 1px solid #475569;
-      background: #0f172a;
-      color: white;
-      box-sizing: border-box;
-    }
-    .character-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    .character-option {
-      background: #334155;
+    .badge { background: #f59e0b; color: #0f172a; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+    .cell-card { background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 10px; text-align: left; font-size: 14px; border: 1px solid #334155; }
+    .detail-list { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #334155; color: #94a3b8; font-size: 13px; }
+    .score-board { background: #0f172a; border: 1px solid #38bdf8; border-radius: 10px; padding: 12px; margin-bottom: 16px; text-align: left; }
+    .tie-row { margin-bottom: 8px; background: #2e1065; padding: 8px; border-radius: 6px; border: 1px solid #6b21a8; }
+    .event-banner { background: #312e81; border: 1px solid #6366f1; color: #e0e7ff; padding: 10px; border-radius: 8px; margin: 12px 0; font-size: 14px; text-align: left; }
+    
+    /* QR Code 樣式微調 */
+    .qrcode-box {
+      background: #fff;
       padding: 12px;
       border-radius: 8px;
-      text-align: center;
-      cursor: pointer;
-      border: 2px solid transparent;
-      transition: all 0.2s;
-    }
-    .character-option.selected {
-      border-color: var(--accent);
-      background: #1d4ed8;
-    }
-    .player-list-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background: #334155;
-      margin-bottom: 6px;
-      border-radius: 6px;
-    }
-    #qrcode-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 15px 0;
-      background: white;
-      padding: 15px;
-      border-radius: 8px;
+      display: inline-block;
+      margin: 10px 0;
     }
   </style>
 </head>
 <body>
 
-  <h1>🔒 牢房糧食爭奪戰</h1>
+  <div class="container">
+    <!-- 主頁面 -->
+    <div id="home-screen">
+      <h1>🌾 牢房糧食爭奪戰</h1>
+      <button onclick="showHostSetup()">我是主持人 (Host)</button>
+      <button class="btn-secondary" onclick="showPlayerSetup()" style="margin-top:12px;">我是玩家 (Player)</button>
+    </div>
 
-  <!-- 首頁 -->
-  <div id="screen-home" class="container">
-    <h2>歡迎進入遊戲</h2>
-    <p style="color: var(--text-muted);">請選擇你的身份：</p>
-    <button onclick="showHostSetup()">我是主持人 (Host)</button>
-    <button onclick="showPlayerJoin()" style="background-color: #10b981; margin-top: 15px;">我是玩家 (Player)</button>
-  </div>
-
-  <!-- 主持人設定 -->
-  <div id="screen-host-setup" class="container hidden">
-    <h2>主持人控制面板</h2>
-    <button onclick="createRoom()">建立新房間</button>
-    <div id="host-room-info" class="hidden" style="margin-top: 20px;">
-      <h3 style="color: var(--success);">房間代碼: <span id="display-room-code" style="font-size: 28px; color: white;"></span></h3>
+    <!-- 主持人面板 -->
+    <div id="host-screen" class="hidden">
+      <h1>👑 主持人控制台</h1>
+      <h2>房間 Code：<span id="room-code-display">----</span></h2>
       
-      <div id="qr-section">
-        <p>請玩家掃描以下 QR Code 加入遊戲：</p>
-        <div id="qrcode-container">
-          <div id="qrcode"></div>
-        </div>
+      <!-- 📱 QR Code 掃描加入專屬區塊 -->
+      <div id="qrcode-section" style="background:#0f172a; padding:12px; border-radius:10px; margin:12px 0; border:1px solid #334155;">
+        <p style="font-size:13px; color:#94a3b8; margin-bottom:6px;">📱 玩家掃描 QR Code 即可直接加入：</p>
+        <div id="qrcode" class="qrcode-box"></div>
       </div>
 
-      <h3>已加入玩家 (<span id="player-count">0</span>):</h3>
-      <div id="host-player-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px;"></div>
-      
-      <button id="btn-start-round" onclick="startNextRound()" style="background-color: #8b5cf6;">開始第 1 回合</button>
+      <p style="font-size:14px; color:#94a3b8;">已加入人數：<b id="player-count" style="color:#38bdf8;">0</b> 人（牢房總數：<span id="cell-count">0</span>）</p>
+
+      <!-- 回合特殊事件提示 -->
+      <div id="host-event-banner" class="event-banner hidden">
+        📢 <b>當開啟回合特殊事件：</b><span id="host-event-desc">--</span>
+      </div>
+     
+      <button id="start-round-btn" onclick="startNextRound()">開始第 1 回合</button>
+      <button id="calc-round-btn" class="btn-danger hidden" onclick="triggerCalculateResults()">📊 執行本回合結算</button>
+
+      <!-- 主持人機密畫面 -->
+      <div id="host-secret-box" class="hidden" style="background:#451a03; border: 1px solid #f59e0b; padding:10px; border-radius:8px; margin-top:12px;">
+        🔒 主持人機密：本回合額外 200 糧食隱藏在 <b id="secret-bonus-cell" style="color:#f59e0b; font-size:18px;">-</b> 號牢房！
+        <p id="submit-progress" style="font-size:13px; color:#fde68a; margin-top:4px;">提交進度：0 / 0 人</p>
+      </div>
+
+      <!-- 同分裁決區 -->
+      <div id="host-tie-box" class="hidden" style="margin-top:15px; text-align:left; background:#1e1b4b; padding:12px; border-radius:8px; border: 1px solid #a855f7;">
+        <h3 style="color:#a855f7;">⚖️ 同分裁決區：</h3>
+        <div id="tie-controls"></div>
+        <button id="publish-score-btn" class="btn-success" onclick="publishUpdatedScores()" style="margin-top:10px;">🔄 更新並發布最新分數</button>
+      </div>
+
+      <!-- 戰況卡片同步顯示區 -->
+      <div id="host-results" style="margin-top:15px; text-align:left;"></div>
+
+      <h3 style="margin-top:20px; text-align:left;">目前玩家總分排行榜：</h3>
+      <ul id="player-list" class="player-list"></ul>
+    </div>
+
+    <!-- 玩家選擇角色/登入介面 -->
+    <div id="player-setup-screen" class="hidden">
+      <h1>🎲 加入牢房爭奪</h1>
+     
+      <label for="room-code-input">房間 CODE：</label>
+      <input type="number" id="room-code-input" placeholder="請輸入 4 位數房間 Code" oninput="onRoomCodeChange()">
+
+      <label for="character-select">選擇您的角色：</label>
+      <select id="character-select" onchange="onCharacterChange()"></select>
+
+      <!-- 角色頭像預覽 -->
+      <div class="avatar-preview-box">
+        <img id="preview-avatar" src="" alt="角色頭像" class="avatar-img">
+        <div id="preview-name" class="avatar-name"></div>
+      </div>
+
+      <button onclick="joinRoom()">確認加入遊戲</button>
+    </div>
+
+    <!-- 玩家遊戲操作介面 -->
+    <div id="player-game-screen" class="hidden">
+      <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:16px;">
+        <img id="my-avatar-display" src="" style="width:52px; height:52px; border-radius:50%; object-fit:cover; border:2px solid #38bdf8;">
+        <h2 id="player-cell-info" style="margin-bottom:0;"></h2>
+      </div>
+
+      <div class="score-board">
+        <h3 style="font-size:15px; color:#38bdf8; margin-bottom:8px;">🏆 即時玩家總分排行榜：</h3>
+        <ul id="player-score-list" class="player-list" style="margin-top:0;"></ul>
+      </div>
+
+      <div id="game-status-box" style="background:#0f172a; padding:12px; border-radius:8px; margin:12px 0;">
+        <p id="round-display">等待主持人開始遊戲...</p>
+      </div>
+
+      <!-- 玩家事件提示 -->
+      <div id="player-event-banner" class="event-banner hidden">
+        📢 <b>當前開啟特殊事件：</b><span id="player-event-desc">--</span>
+      </div>
+
+      <!-- 分配 4 位手下的區域 -->
+      <div id="dispatch-section" class="hidden">
+        <p style="margin-bottom:8px; font-weight:bold;">分配你的 4 位手下（手下號碼 = 戰鬥力）：</p>
+        <div class="minion-row" id="row-m1"><span>手下 1（1點）：</span><select id="m1" style="width:60%; margin:0;"></select></div>
+        <div class="minion-row" id="row-m2"><span>手下 2（2點）：</span><select id="m2" style="width:60%; margin:0;"></select></div>
+        <div class="minion-row" id="row-m3"><span>手下 3（3點）：</span><select id="m3" style="width:60%; margin:0;"></select></div>
+        <div class="minion-row" id="row-m4"><span>手下 4（4點）：</span><select id="m4" style="width:60%; margin:0;"></select></div>
+        <button id="submit-btn" onclick="submitDispatch()">確認提交陣容</button>
+      </div>
+
+      <p id="wait-msg" style="color:#94a3b8; margin-top:12px;"></p>
+     
+      <!-- 玩家端戰況卡片顯示區 -->
+      <div id="player-results" style="margin-top:15px; text-align:left;"></div>
     </div>
   </div>
 
-  <!-- 玩家加入 -->
-  <div id="screen-player-join" class="container hidden">
-    <h2>加入遊戲房間</h2>
-    <label>房間代碼 (4位數字):</label>
-    <input type="text" id="input-room-code" placeholder="例如: 5821" maxlength="4">
-    
-    <label>你的名字:</label>
-    <input type="text" id="input-player-name" placeholder="輸入你的稱呼">
-
-    <label>選擇你的角色 (自動鎖定對應牢房):</label>
-    <div class="character-grid" id="character-selection-grid">
-      <div class="character-option" onclick="selectCharacter(1, '拉不拉卡', '1號牢房')">拉不拉卡<br><small>1號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(2, '孫旺財', '2號牢房')">孫旺財<br><small>2號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(3, '唐三角', '3號牢房')">唐三角<br><small>3號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(4, '雲蘇', '4號牢房')">雲蘇<br><small>4號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(5, '王元鵝', '5號牢房')">王元鵝<br><small>5號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(6, '諸葛帥坤', '6號牢房')">諸葛帥坤<br><small>6號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(7, '小程', '7號牢房')">小程<br><small>7號牢房</small></div>
-      <div class="character-option" onclick="selectCharacter(8, '李小白', '8號牢房')">李小白<br><small>8號牢房</small></div>
-    </div>
-
-    <button onclick="joinRoom()">確認加入房間</button>
-  </div>
-
-  <!-- 玩家遊戲畫面 -->
-  <div id="screen-player-game" class="container hidden">
-    <h2>等待遊戲開始</h2>
-    <div id="player-status-box" style="background: #334155; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-      <h3 id="player-info-display">角色載入中...</h3>
-      <p id="player-cell-display" style="color: #60a5fa; font-weight: bold;"></p>
-    </div>
-
-    <div id="round-dispatch-section" class="hidden">
-      <h3 id="current-round-title">第 1 回合佈署</h3>
-      <p id="event-description" style="color: #facc15; font-weight: bold;"></p>
-      <p id="disabled-minion-notice" style="color: var(--danger); font-weight: bold;"></p>
-
-      <p>請將你的 4 位手下（m1~m4）分配到目標牢房編號：</p>
-      <div id="minion-selectors"></div>
-      <button onclick="submitMinions()" style="background-color: var(--success);">確認提交陣容</button>
-    </div>
-  </div>
-
-  <!-- 主持人遊戲畫面 -->
-  <div id="screen-host-game" class="container hidden">
-    <h2 id="host-game-title">回合進行中</h2>
-    <p id="host-event-desc" style="color: #facc15; font-weight: bold;"></p>
-    <div style="background: #334155; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
-      <p>🎯 本回合機密 Bonus 牢房：<span id="host-bonus-cell" style="color: #facc15; font-size: 20px; font-weight: bold;">?</span> 號</p>
-      <p>📦 玩家提交進度：<span id="submitted-status-count">0</span> / <span id="submitted-total-count">0</span></p>
-    </div>
-    <button id="btn-calculate" onclick="triggerCalculate()" style="background-color: var(--danger);" disabled>執行本回合結算</button>
-  </div>
-
-  <!-- 結算結果 -->
-  <div id="screen-result" class="container hidden">
-    <h2>⚖️ 回合結算結果</h2>
-    <div id="result-content"></div>
-    <div id="tie-resolution-box" class="hidden" style="margin-top: 15px; background: #334155; padding: 12px; border-radius: 8px;">
-      <h3>平手裁決區</h3>
-      <div id="tie-containers"></div>
-    </div>
-    <button id="btn-next-round" onclick="startNextRound()" style="margin-top: 15px; background-color: var(--accent);">進入下一回合</button>
-  </div>
-
-  <!-- 最終結算 -->
-  <div id="screen-game-over" class="container hidden">
-    <h2>🏆 遊戲最終結算排行榜</h2>
-    <div id="leaderboard-content"></div>
-  </div>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
+    let currentRoomId = '';
+    let myCellNo = 0;
+    let currentDisabledMinion = null;
+    let currentRound = 1;
+    let totalPlayersCount = 0;
 
-    let currentRoomCode = '';
-    let selectedCharacterId = null;
-    let selectedCharacterName = '';
-    let selectedCellNo = null;
-    let myPlayerId = '';
-    let maxRounds = 4;
-    let currentRound = 0;
-    let disabledMinionPower = null;
+    const CHARACTERS = [
+      { id: 1, name: '拉不拉卡', avatar: '/拉不拉卡.jpeg' },
+      { id: 2, name: '孫旺財',   avatar: '/孫旺財.jpeg' },
+      { id: 3, name: '雲蘇',     avatar: '/云蘇.jpeg' },
+      { id: 4, name: '唐三角',   avatar: '/唐三角.jpeg' },
+      { id: 5, name: '諸葛帥坤', avatar: '/諸葛帥坤.jpeg' },
+      { id: 6, name: '王元鵝',   avatar: '/王元鵝.jpeg' },
+      { id: 7, name: '小程',     avatar: '/小程.jpeg' },
+      { id: 8, name: '李小白',   avatar: '/李小白.jpeg' }
+    ];
+
+    let takenCharacterIds = [];
+
+    function showScreen(screenId) {
+      document.getElementById('home-screen').classList.add('hidden');
+      document.getElementById('host-screen').classList.add('hidden');
+      document.getElementById('player-setup-screen').classList.add('hidden');
+      document.getElementById('player-game-screen').classList.add('hidden');
+      document.getElementById(screenId).classList.remove('hidden');
+    }
 
     function showHostSetup() {
-      document.getElementById('screen-home').classList.add('hidden');
-      document.getElementById('screen-host-setup').classList.remove('hidden');
-    }
-
-    function showPlayerJoin() {
-      document.getElementById('screen-home').classList.add('hidden');
-      document.getElementById('screen-player-join').classList.remove('hidden');
-      socket.emit('checkTakenCharacters', currentRoomCode);
-    }
-
-    function createRoom() {
+      showScreen('host-screen');
       socket.emit('createRoom');
     }
 
-    socket.on('roomCreated', ({ roomId, maxRounds: mr }) => {
-      currentRoomCode = roomId;
-      maxRounds = mr;
-      document.getElementById('display-room-code').innerText = roomId;
-      document.getElementById('host-room-info').classList.remove('hidden');
+    function showPlayerSetup() {
+      showScreen('player-setup-screen');
+      renderCharacterSelect();
+    }
 
-      const qrContainer = document.getElementById('qrcode');
-      qrContainer.innerHTML = '';
-      const joinUrl = `${window.location.origin}/?room=${roomId}`;
-      new QRCode(qrContainer, {
-        text: joinUrl,
-        width: 160,
-        height: 160
+    function renderCharacterSelect() {
+      const select = document.getElementById('character-select');
+      const currentValue = select.value;
+      select.innerHTML = '';
+
+      CHARACTERS.forEach(char => {
+        const isTaken = takenCharacterIds.includes(char.id);
+        const option = document.createElement('option');
+        option.value = char.id;
+        option.textContent = isTaken ? `${char.name}（已被選擇）` : char.name;
+        option.disabled = isTaken;
+        select.appendChild(option);
       });
-    });
 
-    function selectCharacter(id, name, cellDesc) {
-      selectedCharacterId = id;
-      selectedCharacterName = name;
-      
-      document.querySelectorAll('.character-option').forEach(el => el.classList.remove('selected'));
-      event.currentTarget.classList.add('selected');
+      if (currentValue && !takenCharacterIds.includes(parseInt(currentValue))) {
+        select.value = currentValue;
+      } else {
+        const availableChar = CHARACTERS.find(c => !takenCharacterIds.includes(c.id));
+        if (availableChar) select.value = availableChar.id;
+      }
+
+      updatePreview();
+    }
+
+    function onCharacterChange() {
+      updatePreview();
+    }
+
+    function updatePreview() {
+      const select = document.getElementById('character-select');
+      const charId = parseInt(select.value);
+      const char = CHARACTERS.find(c => c.id === charId);
+
+      if (char) {
+        document.getElementById('preview-avatar').src = char.avatar;
+        document.getElementById('preview-name').innerText = char.name;
+      } else {
+        document.getElementById('preview-avatar').src = '';
+        document.getElementById('preview-name').innerText = '無可用角色';
+      }
+    }
+
+    function onRoomCodeChange() {
+      const code = document.getElementById('room-code-input').value.trim();
+      if (code.length === 4) {
+        socket.emit('checkTakenCharacters', code);
+      } else {
+        takenCharacterIds = [];
+        renderCharacterSelect();
+      }
     }
 
     function joinRoom() {
-      const roomCodeInput = document.getElementById('input-room-code').value.trim();
-      const playerName = document.getElementById('input-player-name').value.trim();
+      const code = document.getElementById('room-code-input').value.trim();
+      const charId = parseInt(document.getElementById('character-select').value);
 
-      if (!roomCodeInput || !playerName || !selectedCharacterId) {
-        alert('請填寫房間代碼、名字並選擇角色！');
-        return;
-      }
+      if (!code) return alert('請輸入 4 位數房間 Code！');
+      if (!charId) return alert('請選擇一個角色！');
+      if (takenCharacterIds.includes(charId)) return alert('該角色已被選擇，請選取其他角色！');
 
-      currentRoomCode = roomCodeInput;
+      const selectedChar = CHARACTERS.find(c => c.id === charId);
+
       socket.emit('joinRoom', {
-        roomId: currentRoomCode,
-        characterId: selectedCharacterId,
-        playerName: playerName,
-        characterAvatar: 'default'
+        roomId: code,
+        characterId: selectedChar.id,
+        playerName: selectedChar.name,
+        characterAvatar: selectedChar.avatar
       });
     }
 
-    socket.on('errorMessage', (msg) => {
-      alert(msg);
+    // 初始化手下派遣的牢房選單選項
+    function initSelects(totalCells, disabledMinion = null) {
+      currentDisabledMinion = disabledMinion;
+
+      let maxSelectableCells = totalCells;
+      if (currentRound >= 1 && currentRound <= 4 && totalPlayersCount > 0) {
+        maxSelectableCells = totalPlayersCount;
+      }
+
+      [1,2,3,4].forEach(num => {
+        const select = document.getElementById(`m${num}`);
+        const row = document.getElementById(`row-m${num}`);
+        select.innerHTML = '';
+       
+        if (disabledMinion === num) {
+          row.classList.add('minion-disabled');
+          select.disabled = true;
+          select.innerHTML = `<option value="0">⛔ 該手下受阻無法出戰</option>`;
+        } else {
+          row.classList.remove('minion-disabled');
+          select.disabled = false;
+          for(let i = 1; i <= maxSelectableCells; i++) {
+            select.innerHTML += `<option value="${i}">前往 ${i} 號牢房</option>`;
+          }
+        }
+      });
+    }
+
+    function startNextRound() {
+      socket.emit('startNextRound', { roomId: currentRoomId });
+    }
+
+    function triggerCalculateResults() {
+      socket.emit('triggerCalculateResults', { roomId: currentRoomId });
+    }
+
+    function publishUpdatedScores() {
+      socket.emit('publishUpdatedScores', { roomId: currentRoomId });
+      alert('已即時發布最新分數至所有玩家版面！');
+    }
+
+    function submitDispatch() {
+      const dispatchMap = {};
+      [1, 2, 3, 4].forEach(num => {
+        if (currentDisabledMinion !== num) {
+          dispatchMap[num] = parseInt(document.getElementById(`m${num}`).value);
+        }
+      });
+
+      socket.emit('submitMinions', { roomId: currentRoomId, dispatchMap });
+      document.getElementById('dispatch-section').classList.add('hidden');
+      document.getElementById('wait-msg').innerText = '✅ 陣容已提交，等待結算...';
+    }
+
+    function resolveTie(cellNo, selectId) {
+      const winnerPlayerId = document.getElementById(selectId).value;
+      socket.emit('resolveTie', { roomId: currentRoomId, cellNo, winnerPlayerId });
+    }
+
+    function renderPlayerList(players) {
+      totalPlayersCount = players.length;
+      const sorted = [...players].sort((a,b) => b.totalScore - a.totalScore);
+
+      const hostList = document.getElementById('player-list');
+      if (hostList) {
+        hostList.innerHTML = '';
+        sorted.forEach((p, idx) => {
+          hostList.innerHTML += `
+            <li class="player-item" id="p-${p.id}">
+              <div style="display:flex; align-items:center;">
+                <img src="${p.avatar || '/images/default.png'}" class="player-avatar">
+                <span><b>第 ${idx + 1} 名</b> | ${p.name} (${p.cellNo} 號牢房)</span>
+              </div>
+              <span class="badge">${p.totalScore} 分</span>
+            </li>`;
+        });
+      }
+
+      const playerList = document.getElementById('player-score-list');
+      if (playerList) {
+        playerList.innerHTML = '';
+        sorted.forEach((p, idx) => {
+          const isMe = Number(p.cellNo) === Number(myCellNo) ? ' (你)' : '';
+          playerList.innerHTML += `
+            <li class="player-item" style="${Number(p.cellNo) === Number(myCellNo) ? 'border: 1px solid #38bdf8;' : ''}">
+              <div style="display:flex; align-items:center;">
+                <img src="${p.avatar || '/images/default.png'}" class="player-avatar">
+                <span><b>第 ${idx + 1} 名</b> | ${p.name} (${p.cellNo} 號牢房)${isMe}</span>
+              </div>
+              <span class="badge" style="background:#38bdf8; color:#0f172a;">${p.totalScore} 分</span>
+            </li>`;
+        });
+      }
+    }
+
+    function buildCellCardsHTML(round, bonusCell, totalCells, summary) {
+      let resultHTML = `<h3 style="color:#f59e0b; margin-bottom:10px;">第 ${round} 回合戰果揭曉：</h3>`;
+
+      for (let cellNo = 1; cellNo <= totalCells; cellNo++) {
+        const info = summary[cellNo];
+        if(!info) continue;
+
+        const isBonus = Number(cellNo) === Number(bonusCell) ? ' <span style="color:#f59e0b;">[🔥Bonus+200]</span>' : '';
+        const isDouble = info.isDouble ? ' <span style="color:#ef4444; font-weight:bold;">[⚡雙倍食糧x2!]</span>' : '';
+
+        resultHTML += `<div class="cell-card"><b>【${cellNo} 號牢房】${isBonus}${isDouble}</b> (本局總爭奪分數: ${info.points})<br>`;
+       
+        if (info.status === 'WIN') {
+          resultHTML += `👑 <b>${info.winnerName}</b> 獨得 ${info.points} 分！<br>`;
+        } else if (info.status === 'TIE') {
+          resultHTML += `⚖️ <b>最高/對應戰力平手</b>（${info.power} 點），等待主持人裁決！<br>`;
+        } else {
+          resultHTML += `⚪ 無人爭奪。<br>`;
+        }
+
+        if (info.details && info.details.length > 0) {
+          resultHTML += `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>`;
+          info.details.forEach(d => {
+            // 修正處：將括號內改為顯示該角色所屬的牢房 (fromCellNo)
+            const playerCellDisplay = d.fromCellNo ? `(${d.fromCellNo}號牢房)` : '';
+            resultHTML += `• ${d.playerName} ${playerCellDisplay}: <b>${d.power} 點戰力</b><br>`;
+          });
+          resultHTML += `</div>`;
+        } else {
+          resultHTML += `<div class="detail-list" style="color:#64748b;">⚔️ 無玩家派駐戰力</div>`;
+        }
+
+        resultHTML += `</div>`;
+      }
+
+      return resultHTML;
+    }
+
+    socket.on('roomCreated', ({ roomId }) => {
+      currentRoomId = roomId;
+      document.getElementById('room-code-display').innerText = roomId;
+
+      // 📱 自動生成當前房間專屬的 QR Code
+      const qrcodeContainer = document.getElementById('qrcode');
+      qrcodeContainer.innerHTML = ""; // 清空舊的
+     
+      const joinUrl = `${window.location.origin}/?room=${roomId}`;
+      new QRCode(qrcodeContainer, {
+        text: joinUrl,
+        width: 150,
+        height: 150
+      });
     });
 
-    socket.on('joinSuccess', ({ roomId, playerName, characterAvatar, cellNo, maxRounds: mr }) => {
-      maxRounds = mr;
-      myPlayerId = socket.id;
-      selectedCellNo = cellNo;
-
-      document.getElementById('screen-player-join').classList.add('hidden');
-      document.getElementById('screen-player-game').classList.remove('hidden');
-      document.getElementById('player-info-display').innerText = `玩家：${playerName} (${selectedCharacterName})`;
-      document.getElementById('player-cell-display').innerText = `🔒 你所屬的固定牢房：${cellNo} 號`;
+    socket.on('updateTakenCharacters', (takenIds) => {
+      takenCharacterIds = takenIds;
+      renderCharacterSelect();
     });
 
     socket.on('updatePlayers', (players) => {
-      const listEl = document.getElementById('host-player-list');
-      const countEl = document.getElementById('player-count');
-      if (!listEl) return;
-
-      countEl.innerText = players.length;
-      listEl.innerHTML = players.map(p => `
-        <div class="player-list-item">
-          <span>${p.name} (${p.characterId ? '角色#' + p.characterId : ''})</span>
-          <span>牢房: <b>${p.cellNo}號</b> | 積分: ${p.totalScore}</span>
-        </div>
-      `).join('');
+      totalPlayersCount = players.length;
+      document.getElementById('player-count').innerText = players.length;
+      document.getElementById('cell-count').innerText = players.length;
+      renderPlayerList(players);
     });
 
-    socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
+    socket.on('joinSuccess', ({ roomId, playerName, characterAvatar, cellNo }) => {
+      currentRoomId = roomId;
+      myCellNo = cellNo;
+      showScreen('player-game-screen');
+      document.getElementById('my-avatar-display').src = characterAvatar;
+      document.getElementById('player-cell-info').innerText = `${playerName}（牢房 ${cellNo} 號）`;
+    });
+
+    socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
+      document.getElementById('host-secret-box').classList.remove('hidden');
+      document.getElementById('secret-bonus-cell').innerText = bonusCell;
+      document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
+    });
+
+    socket.on('roundStarted', ({ round, totalCells, eventInfo }) => {
       currentRound = round;
       
-      if (round > 1) {
-        const qrSec = document.getElementById('qr-section');
-        if (qrSec) qrSec.classList.add('hidden');
-      }
+      // 修正處：當第一回合或之後開始時，隱藏主持人的 QR code 區塊
+      document.getElementById('qrcode-section').classList.add('hidden');
 
-      document.getElementById('screen-host-setup').classList.add('hidden');
-      document.getElementById('screen-result').classList.add('hidden');
-      
-      if (document.getElementById('screen-host-setup').classList.contains('hidden') && myPlayerId === '') {
-        // 主持人
-      } else {
-        document.getElementById('round-dispatch-section').classList.remove('hidden');
-        document.getElementById('current-round-title').innerText = `第 ${round} 回合佈署 (共 ${maxRounds} 回合)`;
-        document.getElementById('event-description').innerText = eventInfo.description;
-      }
+      document.getElementById('round-display').innerText = `=== 第 ${round} 回合 ===`;
+      document.getElementById('dispatch-section').classList.remove('hidden');
+      document.getElementById('wait-msg').innerText = '';
+
+      document.getElementById('host-event-banner').classList.remove('hidden');
+      document.getElementById('host-event-desc').innerText = eventInfo.description;
+      document.getElementById('player-event-banner').classList.remove('hidden');
+      document.getElementById('player-event-desc').innerText = eventInfo.description;
+     
+      document.getElementById('player-results').innerHTML = '';
+      document.getElementById('host-results').innerHTML = '';
+      document.getElementById('tie-controls').innerHTML = '';
+      document.getElementById('host-tie-box').classList.add('hidden');
+
+      initSelects(totalCells, null);
+
+      document.getElementById('start-round-btn').classList.add('hidden');
+      document.getElementById('calc-round-btn').classList.remove('hidden');
     });
 
     socket.on('playerRoundConfig', ({ disabledMinion }) => {
-      disabledMinionPower = disabledMinion;
-      const noticeEl = document.getElementById('disabled-minion-notice');
-      const selectorsEl = document.getElementById('minion-selectors');
-      selectorsEl.innerHTML = '';
-
-      if (disabledMinion) {
-        noticeEl.innerText = `🚫 兵力受阻事件：你的手下 ${disabledMinion}（戰力 ${disabledMinion}）本回合被封印，無法派遣！`;
-      } else {
-        noticeEl.innerText = '';
-      }
-
-      for (let i = 1; i <= 4; i++) {
-        const isDisabled = (disabledMinion === i);
-        selectorsEl.innerHTML += `
-          <div style="margin-bottom: 10px;">
-            <label>手下 ${i} (戰力 ${i}) ${isDisabled ? '<span style="color:red;">[已封印]</span>' : ''} -> 派遣至牢房編號：</label>
-            <select id="m${i}" ${isDisabled ? 'disabled style="background:#555;"' : ''}>
-              ${generateCellOptions()}
-            </select>
-          </div>
-        `;
-      }
+      const totalCells = parseInt(document.getElementById('cell-count').innerText) || 0;
+      initSelects(totalCells, disabledMinion);
     });
 
-    function generateCellOptions() {
-      let opts = '';
-      for (let i = 1; i <= 8; i++) {
-        opts += `<option value="${i}">第 ${i} 號牢房</option>`;
-      }
-      return opts;
-    }
-
-    function submitMinions() {
-      const dispatchMap = {};
-      for (let i = 1; i <= 4; i++) {
-        if (disabledMinionPower === i) continue;
-        const selectEl = document.getElementById(`m${i}`);
-        if (selectEl) {
-          dispatchMap[i] = parseInt(selectEl.value);
-        }
-      }
-
-      socket.emit('submitMinions', { roomId: currentRoomCode, dispatchMap });
-      alert('陣容已成功提交！請等待主持人結算。');
-      document.getElementById('round-dispatch-section').classList.add('hidden');
-    }
-
-    socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
-      document.getElementById('screen-host-setup').classList.add('hidden');
-      document.getElementById('screen-host-game').classList.remove('hidden');
-      document.getElementById('host-bonus-cell').innerText = bonusCell;
-      document.getElementById('submitted-status-count').innerText = submittedCount;
-      document.getElementById('submitted-total-count').innerText = totalPlayers;
-      document.getElementById('btn-calculate').disabled = false;
+    socket.on('playerSubmittedNotice', ({ playerId, submittedCount, totalPlayers }) => {
+      document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
     });
 
-    socket.on('playerSubmittedNotice', ({ submittedCount, totalPlayers }) => {
-      const countEl = document.getElementById('submitted-status-count');
-      if (countEl) countEl.innerText = submittedCount;
-    });
+    socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
+      renderPlayerList(players);
 
-    function triggerCalculate() {
-      socket.emit('triggerCalculateResults', { roomId: currentRoomCode });
-    }
+      const cardsHTML = buildCellCardsHTML(round, bonusCell, totalCells, summary);
 
-    socket.on('roundRevealed', ({ round, maxRounds, isLastRound, summary, tiesToResolve }) => {
-      document.getElementById('screen-host-game').classList.add('hidden');
-      document.getElementById('screen-result').classList.remove('hidden');
+      document.getElementById('player-results').innerHTML = cardsHTML;
+      document.getElementById('host-results').innerHTML = cardsHTML;
 
-      const contentEl = document.getElementById('result-content');
-      let html = `<h3>第 ${round} 回合結算明細</h3>`;
+      document.getElementById('wait-msg').innerText = '';
+      document.getElementById('calc-round-btn').classList.add('hidden');
 
-      Object.entries(summary).forEach(([cellNo, data]) => {
-        html += `
-          <div style="background:#334155; padding:10px; margin-bottom:8px; border-radius:6px;">
-            <p><b>${cellNo} 號牢房</b> ${data.isDouble ? '<span style="color:#facc15;">[🔥 雙倍糧食]</span>' : ''}</p>
-            <p>本局總爭奪糧食：${data.points} 分</p>
-            <p>結算狀態：<span style="color:var(--success); font-weight:bold;">${data.winnerName || '無得主'}</span></p>
-          </div>
-        `;
-      });
+      const tieBox = document.getElementById('host-tie-box');
+      const tieControls = document.getElementById('tie-controls');
 
-      contentEl.innerHTML = html;
-
-      const tieBox = document.getElementById('tie-resolution-box');
-      const tieContainers = document.getElementById('tie-containers');
       if (tiesToResolve && tiesToResolve.length > 0) {
         tieBox.classList.remove('hidden');
-        tieContainers.innerHTML = tiesToResolve.map(t => `
-          <p>${t.cellNo} 號牢房平手 (${t.points}分)，請主持人裁決贏家：</p>
-          ${t.tiedPlayers.map(p => `<button onclick="resolveTie('${t.cellNo}', '${p.id}')">${p.name}</button>`).join('')}
-        `).join('');
+        tieControls.innerHTML = '';
+
+        tiesToResolve.forEach(tie => {
+          let opts = tie.tiedPlayers.map(p => `<option value="${p.id}">${p.name} (${p.cellNo}號牢房)</option>`).join('');
+          tieControls.innerHTML += `
+            <div class="tie-row" id="tie-row-${tie.cellNo}">
+              ${tie.cellNo} 號牢房 (爭奪 ${tie.points} 分)：
+              <select id="tie-sel-${tie.cellNo}" style="width:auto; display:inline-block; padding:4px; margin:4px 0;">${opts}</select>
+              <button style="width:auto; padding:6px 12px; margin-left:6px;" onclick="resolveTie(${tie.cellNo}, 'tie-sel-${tie.cellNo}')">給予分數</button>
+            </div>`;
+        });
       } else {
+        tieControls.innerHTML = '';
         tieBox.classList.add('hidden');
       }
 
+      const btn = document.getElementById('start-round-btn');
       if (isLastRound) {
-        document.getElementById('btn-next-round').innerText = '查看最終排行榜';
-        document.getElementById('btn-next-round').setAttribute('onclick', 'showFinalLeaderboard()');
+        btn.innerText = `🏆 結算最終遊戲結果`;
+      } else {
+        btn.innerText = `開始第 ${round + 1} 回合`;
+      }
+      btn.classList.remove('hidden');
+    });
+
+    socket.on('gameOver', ({ message, leaderboard }) => {
+      document.getElementById('start-round-btn').classList.add('hidden');
+      document.getElementById('calc-round-btn').classList.add('hidden');
+      document.getElementById('host-secret-box').classList.add('hidden');
+      document.getElementById('host-tie-box').classList.add('hidden');
+     
+      const winner = leaderboard[0];
+      alert(`🎉 ${message}\n🏆 最終冠軍：${winner.name} (${winner.totalScore}分)`);
+     
+      document.getElementById('round-display').innerText = `🏆 遊戲結束！冠軍是【${winner.name}】（${winner.totalScore}分）`;
+    });
+
+    socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
+      renderPlayerList(players);
+
+      const tieRow = document.getElementById(`tie-row-${cellNo}`);
+      if (tieRow) {
+        tieRow.remove();
+      }
+
+      const tieControls = document.getElementById('tie-controls');
+      if (tieControls && tieControls.children.length === 0) {
+        document.getElementById('host-tie-box').classList.add('hidden');
+      }
+
+      const cellCards = document.querySelectorAll('.cell-card');
+      cellCards.forEach(card => {
+        if (card.innerHTML.includes(`【${cellNo} 號牢房】`)) {
+          card.innerHTML = card.innerHTML.replace(
+            /⚖️ <b>最高\/對應戰力平手<\/b>.*?等待主持人裁決！/,
+            `⚖️ <b>主持人裁決：</b>由 <b>${winnerName}</b> 獲得該牢房分數！`
+          );
+        }
+      });
+    });
+
+    // 💡 貼心功能：當玩家掃描 QR Code 點進來時，自動把房號填入輸入框
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomFromUrl = urlParams.get('room');
+      if (roomFromUrl) {
+        const roomInput = document.getElementById('room-code-input');
+        if (roomInput) {
+          roomInput.value = roomFromUrl;
+          onRoomCodeChange(); // 自動檢查角色狀態
+        }
       }
     });
 
-    function resolveTie(cellNo, winnerPlayerId) {
-      socket.emit('resolveTie', { roomId: currentRoomCode, cellNo, winnerPlayerId });
-    }
-
-    socket.on('tieResolved', ({ cellNo, winnerName }) => {
-      alert(`已成功裁決 ${cellNo} 號牢房由 ${winnerName} 獲勝！`);
-      document.getElementById('tie-resolution-box').classList.add('hidden');
-    });
-
-    function showFinalLeaderboard() {
-      socket.emit('startNextRound', { roomId: currentRoomCode });
-    }
-
-    socket.on('gameOver', ({ message, leaderboard }) => {
-      document.getElementById('screen-result').classList.add('hidden');
-      document.getElementById('screen-game-over').classList.remove('hidden');
-
-      const lbEl = document.getElementById('leaderboard-content');
-      lbEl.innerHTML = `<h3>${message}</h3>` + leaderboard.map((p, index) => `
-        <div class="player-list-item" style="font-size: 18px; margin-bottom: 8px;">
-          <span>#${index + 1} ${p.name} (${p.characterId ? '角色#' + p.characterId : ''})</span>
-          <b style="color: #facc15;">${p.totalScore} 分</b>
-        </div>
-      `).join('');
-    });
+    socket.on('errorMessage', (msg) => alert(msg));
   </script>
 </body>
 </html>
