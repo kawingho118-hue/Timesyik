@@ -140,9 +140,6 @@ io.on('connection', (socket) => {
     const bonusCell = Math.floor(Math.random() * totalCells) + 1;
     room.currentBonusCell = bonusCell;
 
-    // 💡 規則修正：每一回合開始時：
-    // 若牢房上一回合糧食未被拿走（無人爭奪而累積），會與本回合新產生的基礎糧食相加；
-    // 若上一回合已被奪走而歸零，則本回合直接注入預設 100 糧食（或隨機的 200 Bonus 糧食）。
     for (let i = 1; i <= totalCells; i++) {
       if (room.cellAccumulatedScores[i] === undefined) {
         room.cellAccumulatedScores[i] = 0;
@@ -286,14 +283,12 @@ io.on('connection', (socket) => {
       const invaderEntries = Object.entries(powers).filter(([pId, pPower]) => (!owner || pId !== owner.id) && pPower > 0);
       const totalInvaderPower = invaderEntries.reduce((sum, [_, pPower]) => sum + pPower, 0);
 
-      // 狀況 A：無人爭奪 / 無人防守（分數繼續完整保留累積到下一回合）
       if (ownerPower === 0 && totalInvaderPower === 0) {
         room.cellAccumulatedScores[cellNo] = currentPoints;
         continue;
       }
 
       if (owner) {
-        // 狀況 B：無入侵者，屋主獨守 -> 獲得當前牢房所有累積糧食，隨後該牢房糧食歸零
         if (invaderEntries.length === 0) {
           if (ownerPower > 0) {
             owner.totalScore += currentPoints;
@@ -307,7 +302,6 @@ io.on('connection', (socket) => {
           continue;
         }
 
-        // 狀況 C：1 名入侵者
         if (invaderEntries.length === 1) {
           const [invaderId, invaderPower] = invaderEntries[0];
           const invader = room.players.find(p => p.id === invaderId);
@@ -336,7 +330,6 @@ io.on('connection', (socket) => {
           continue;
         }
 
-        // 狀況 D：多名入侵者
         if (invaderEntries.length > 1) {
           if (ownerPower >= totalInvaderPower) {
             owner.totalScore += currentPoints;
@@ -388,7 +381,6 @@ io.on('connection', (socket) => {
           continue;
         }
       } else {
-        // 無屋主牢房
         let targetPlayers = [];
         let targetPower = 0;
 
@@ -443,6 +435,15 @@ io.on('connection', (socket) => {
       players: room.players,
       tiesToResolve
     });
+
+    if (isLastRound) {
+      room.isGameOver = true;
+      const leaderboard = [...room.players].sort((a, b) => b.totalScore - a.totalScore);
+      io.to(roomId).emit('gameOver', {
+        message: `遊戲結束！已完成所有 ${room.maxRounds} 回合。`,
+        leaderboard
+      });
+    }
   });
 
   // 7. 手動裁決平手
@@ -454,7 +455,7 @@ io.on('connection', (socket) => {
     if (winner) {
       let points = room.cellAccumulatedScores[cellNo] || 0;
       winner.totalScore += points;
-      room.cellAccumulatedScores[cellNo] = 0; // 平手裁決後該牢房糧食歸零
+      room.cellAccumulatedScores[cellNo] = 0;
 
       io.to(roomId).emit('tieResolved', {
         cellNo,

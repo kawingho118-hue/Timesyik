@@ -63,7 +63,6 @@
     .tie-row { margin-bottom: 8px; background: #2e1065; padding: 8px; border-radius: 6px; border: 1px solid #6b21a8; }
     .event-banner { background: #312e81; border: 1px solid #6366f1; color: #e0e7ff; padding: 10px; border-radius: 8px; margin: 12px 0; font-size: 14px; text-align: left; }
     
-    /* QR Code 樣式微調 */
     .qrcode-box {
       background: #fff;
       padding: 12px;
@@ -291,7 +290,6 @@
       });
     }
 
-    // 初始化手下派遣的牢房選單選項
     function initSelects(totalCells, disabledMinion = null) {
       currentDisabledMinion = disabledMinion;
 
@@ -385,7 +383,6 @@
       }
     }
 
-    // Socket 監聽事件
     socket.on('roomCreated', (data) => {
       currentRoomId = data.roomId;
       document.getElementById('room-code-display').innerText = data.roomId;
@@ -401,6 +398,7 @@
         colorLight: "#ffffff",
         correctLevel: QRCode.CorrectLevel.H
       });
+      document.getElementById('qrcode-section').classList.remove('hidden');
     });
 
     socket.on('updateTakenCharacters', (takenIds) => {
@@ -459,11 +457,11 @@
         document.getElementById('host-event-banner').classList.add('hidden');
       }
 
-      // 玩家介面更新
+      // 玩家介面更新 (開啟新一輪遊戲面板)
       document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
       document.getElementById('wait-msg').innerText = '';
-      document.getElementById('dispatch-section').classList.remove('hidden');
-      document.getElementById('player-results').innerHTML = '';
+      document.getElementById('player-results').innerHTML = ''; // 清除上一回合結算戰況
+      document.getElementById('dispatch-section').classList.remove('hidden'); // 顯示新一輪陣容配置面板
 
       if (eventInfo && eventInfo.description) {
         document.getElementById('player-event-desc').innerText = eventInfo.description;
@@ -476,7 +474,6 @@
     socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
       renderPlayerList(players);
 
-      // 1. 主持人控制台按鈕
       if (isLastRound) {
         document.getElementById('calc-round-btn').classList.add('hidden');
         document.getElementById('start-round-btn').classList.add('hidden');
@@ -486,7 +483,6 @@
         document.getElementById('start-round-btn').innerText = `開始第 ${round + 1} 回合`;
       }
 
-      // 2. 處理同分裁決
       const tieBox = document.getElementById('host-tie-box');
       const tieControls = document.getElementById('tie-controls');
       tieControls.innerHTML = '';
@@ -508,7 +504,6 @@
         tieBox.classList.add('hidden');
       }
 
-      // 3. 渲染戰況卡片 (主持人與玩家通用)
       function renderCards(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -556,14 +551,12 @@
 
     socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
       renderPlayerList(players);
-      const hostResults = document.getElementById('host-results');
-      const playerResults = document.getElementById('player-results');
-      
       alert(`⚖️ ${cellNo} 號牢房平手裁決完畢！由 ${winnerName} 獲得該牢房糧食！`);
     });
 
     socket.on('gameOver', ({ message, leaderboard }) => {
       alert(message);
+      document.getElementById('qrcode-section').classList.add('hidden'); // 隱藏 QR Code 區塊
       document.getElementById('game-status-box').innerHTML = `<h2 style="color:#f59e0b;">🎉 遊戲結束！</h2>`;
     });
   </script>
