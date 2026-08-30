@@ -118,7 +118,6 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
   });
 
-
   // 4. 開始下一回合
   socket.on('startNextRound', ({ roomId }) => {
     const room = rooms[roomId];
@@ -141,16 +140,18 @@ io.on('connection', (socket) => {
     // 🎯 牢房總數改為「當前玩家人數」（例：6人即為 1~6 號牢房）
     const totalCells = room.players.length;
 
-    // 維護每間有效牢房基礎分數（若無則初始化為 100）
-    for (let i = 1; i <= totalCells; i++) {
-      if (!room.cellAccumulatedScores[i]) {
-        room.cellAccumulatedScores[i] = 100;
-      }
-    }
-
     // 隨機產生本回合 200 分 Bonus 牢房 (範圍：1~人數)
     const bonusCell = Math.floor(Math.random() * totalCells) + 1;
     room.currentBonusCell = bonusCell;
+
+    // 每一回合開始時：每間牢房原本累積的分數 + 本回合固定 100 糧食（若為 Bonus 房則直接以 200 取代 100 基礎）
+    for (let i = 1; i <= totalCells; i++) {
+      if (room.cellAccumulatedScores[i] === undefined) {
+        room.cellAccumulatedScores[i] = 0;
+      }
+      const addedBase = (i === room.currentBonusCell) ? 200 : 100;
+      room.cellAccumulatedScores[i] += addedBase;
+    }
 
     // 事件設定
     let eventInfo = { round: room.round, description: '' };
@@ -160,7 +161,6 @@ io.on('connection', (socket) => {
       eventInfo.description = '🔥 雙倍食糧事件：本回合中，搶奪者總和戰力最高的牢房糧食分數翻倍（x2）！';
     } else if (room.round === 3) {
       eventInfo.description = '🚫 兵力受阻事件：本回合中，每位玩家隨機有 1 位手下無法出戰！';
-      // 為每位玩家隨機抽取一個不可使用的手下 (1~4)
       room.players.forEach(p => {
         room.disabledMinions[p.id] = Math.floor(Math.random() * 4) + 1;
       });
@@ -214,12 +214,10 @@ io.on('connection', (socket) => {
     const summary = {};
     const tiesToResolve = [];
 
-    // 計算當前各牢房基礎爭奪總分（包含隱藏 Bonus 200 分）
+    // 計算當前各牢房爭奪總分（此時 cellAccumulatedScores 已經包含了上一回合累積 + 本回合新增的 100/200 分）
     const actualCellPoints = {};
     for (let i = 1; i <= totalCells; i++) {
-      let points = room.cellAccumulatedScores[i] || 100;
-      if (i === room.currentBonusCell) points += 200;
-      actualCellPoints[i] = points;
+      actualCellPoints[i] = room.cellAccumulatedScores[i] || 0;
     }
 
     // 彙整各牢房對應玩家投入的總戰力
@@ -236,7 +234,6 @@ io.on('connection', (socket) => {
           return;
         }
 
-        // 只計算合法範圍 (1 ~ totalCells) 內的目標牢房
         if (cellPowerMap[cellNo]) {
           if (!cellPowerMap[cellNo][pId]) cellPowerMap[cellNo][pId] = 0;
           cellPowerMap[cellNo][pId] += minionPower;
@@ -289,8 +286,8 @@ io.on('connection', (socket) => {
         if (pObj && pPower > 0) {
           summary[cellNo].details.push({
             playerName: pObj.name,
-            cellNo: cellNo,            // 攻擊的目標牢房
-            fromCellNo: pObj.cellNo,   // 角色實際所屬的牢房
+            cellNo: cellNo,
+            fromCellNo: pObj.cellNo,
             power: pPower
           });
         }
@@ -299,9 +296,10 @@ io.on('connection', (socket) => {
       const invaderEntries = Object.entries(powers).filter(([pId, pPower]) => (!owner || pId !== owner.id) && pPower > 0);
       const totalInvaderPower = invaderEntries.reduce((sum, [_, pPower]) => sum + pPower, 0);
 
-      // 情況 A：無人爭奪 / 無人防守（累積到下一回合，分數維持累積狀態）
+      // 情況 A：無人爭奪 / 無人防守（分數繼續累積到下一回合）
       if (ownerPower === 0 && totalInvaderPower === 0) {
-        // 保持原本累積的分數不變（不重複加 100，因為進下一回合時會統一檢查補上）
+        // 維持當前累積分數到下一回合
+        room.cellAccumulatedScores[cellNo] = currentPoints;
         continue;
       }
 
@@ -314,10 +312,8 @@ io.on('connection', (socket) => {
             summary[cellNo].winnerName = `${owner.name} (獨守成功 +${currentPoints}分)`;
             summary[cellNo].power = ownerPower;
           } else {
-            // 屋主沒派人防守也沒人入侵（雖然上面過濾了，以防萬一）
-            room.cellAccumulatedScores[cellNo] += 100;
+            summary[cellNo].status = 'NONE';
           }
-          // 結算後歸零，等待下一回合開始時注入 100 保底
           room.cellAccumulatedScores[cellNo] = 0;
           continue;
         }
@@ -328,21 +324,18 @@ io.on('connection', (socket) => {
           const invader = room.players.find(p => p.id === invaderId);
 
           if (ownerPower > invaderPower) {
-            // 防守成功，屋主獲得當前所有糧食，牢房歸零
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = `${owner.name} (防守成功 +${currentPoints}分)`;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else if (invaderPower > ownerPower) {
-            // 入侵成功，入侵者獲得所有糧食，牢房歸零
             invader.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = invader.name;
             summary[cellNo].power = invaderPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
-            // 平手
             summary[cellNo].status = 'TIE';
             summary[cellNo].power = ownerPower;
             tiesToResolve.push({
@@ -357,7 +350,6 @@ io.on('connection', (socket) => {
         // 情況 D：多名入侵者
         if (invaderEntries.length > 1) {
           if (ownerPower >= totalInvaderPower) {
-            // 屋主防守成功（擊退所有搶奪者），屋主獲得所有糧食，牢房歸零
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = `${owner.name} (擊退所有搶奪者 +${currentPoints}分)`;
@@ -471,9 +463,7 @@ io.on('connection', (socket) => {
 
     const winner = room.players.find(p => p.id === winnerPlayerId);
     if (winner) {
-      let points = room.cellAccumulatedScores[cellNo] || 100;
-      if (cellNo === room.currentBonusCell) points += 200;
-
+      let points = room.cellAccumulatedScores[cellNo] || 0;
       winner.totalScore += points;
       room.cellAccumulatedScores[cellNo] = 0; // 平手裁決後該牢房糧食清空
 
