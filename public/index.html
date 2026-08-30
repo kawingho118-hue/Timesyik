@@ -19,7 +19,6 @@
 
     button { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #7dd3fc; }
-    button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
     
     .btn-secondary { background: #334155; color: #fff; }
     .btn-secondary:hover { background: #475569; }
@@ -195,16 +194,6 @@
 
     let takenCharacterIds = [];
 
-    window.addEventListener('DOMContentLoaded', () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get('room');
-      if (roomParam) {
-        showPlayerSetup();
-        document.getElementById('room-code-input').value = roomParam;
-        onRoomCodeChange();
-      }
-    });
-
     function showScreen(screenId) {
       document.getElementById('home-screen').classList.add('hidden');
       document.getElementById('host-screen').classList.add('hidden');
@@ -293,29 +282,17 @@
       });
     }
 
-    // 重置派駐區面板狀態 (確保按鈕與選單完全解鎖)
-    function resetDispatchForm() {
-      document.getElementById('dispatch-section').classList.remove('hidden');
-      document.getElementById('wait-msg').innerText = '';
-      
-      const submitBtn = document.getElementById('submit-btn');
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerText = '確認提交陣容';
-      }
-    }
-
     function initSelects(totalCells, disabledMinion = null) {
       currentDisabledMinion = disabledMinion;
 
-      let maxSelectableCells = totalCells || totalPlayersCount;
-      if (maxSelectableCells <= 0) maxSelectableCells = 8; // 安全預設值
+      let maxSelectableCells = totalCells;
+      if (currentRound >= 1 && currentRound <= 4 && totalPlayersCount > 0) {
+        maxSelectableCells = totalPlayersCount;
+      }
 
-      [1, 2, 3, 4].forEach(num => {
+      [1,2,3,4].forEach(num => {
         const select = document.getElementById(`m${num}`);
         const row = document.getElementById(`row-m${num}`);
-        if (!select || !row) return;
-
         select.innerHTML = '';
         
         if (disabledMinion === num) {
@@ -325,11 +302,8 @@
         } else {
           row.classList.remove('minion-disabled');
           select.disabled = false;
-          for (let i = 1; i <= maxSelectableCells; i++) {
-            const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = `前往 ${i} 號牢房`;
-            select.appendChild(opt);
+          for(let i = 1; i <= maxSelectableCells; i++) {
+            select.innerHTML += `<option value="${i}">前往 ${i} 號牢房</option>`;
           }
         }
       });
@@ -351,8 +325,7 @@
       const dispatchMap = {};
       [1, 2, 3, 4].forEach(num => {
         if (currentDisabledMinion !== num) {
-          const val = document.getElementById(`m${num}`).value;
-          dispatchMap[num] = parseInt(val);
+          dispatchMap[num] = parseInt(document.getElementById(`m${num}`).value);
         }
       });
 
@@ -367,9 +340,7 @@
     }
 
     function renderPlayerList(players) {
-      if (!players || !Array.isArray(players)) return;
       totalPlayersCount = players.length;
-
       const sorted = [...players].sort((a,b) => b.totalScore - a.totalScore);
 
       const hostList = document.getElementById('player-list');
@@ -404,15 +375,13 @@
       }
     }
 
-    // --- Socket 事件監聽 ---
-
     socket.on('roomCreated', (data) => {
       currentRoomId = data.roomId;
       document.getElementById('room-code-display').innerText = data.roomId;
       
       const qrContainer = document.getElementById('qrcode');
       qrContainer.innerHTML = '';
-      const joinUrl = `${window.location.origin}?room=${data.roomId}`;
+      const joinUrl = `${window.location.origin}`;
       new QRCode(qrContainer, {
         text: joinUrl,
         width: 140,
@@ -452,10 +421,6 @@
       document.getElementById('cell-count').innerText = players.length;
     });
 
-    socket.on('updateScores', (players) => {
-      renderPlayerList(players);
-    });
-
     socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
       document.getElementById('secret-bonus-cell').innerText = bonusCell;
       document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
@@ -466,26 +431,13 @@
       document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
     });
 
-    // 接收個別人生的回合配置 (修正解鎖點)
-    socket.on('playerRoundConfig', ({ disabledMinion, round }) => {
-      if (round) currentRound = round;
-      currentDisabledMinion = (disabledMinion !== undefined && disabledMinion !== null) ? disabledMinion : null;
-      
-      resetDispatchForm();
-      initSelects(totalPlayersCount, currentDisabledMinion);
-    });
-
-    socket.on('hostEventNotice', (eventInfo) => {
-      if (eventInfo && eventInfo.description) {
-        document.getElementById('host-event-desc').innerText = eventInfo.description;
-        document.getElementById('host-event-banner').classList.remove('hidden');
-      }
+    socket.on('playerRoundConfig', ({ disabledMinion }) => {
+      initSelects(totalPlayersCount, disabledMinion);
     });
 
     socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
       currentRound = round;
       
-      // 主持人介面處理
       const qrSection = document.getElementById('qrcode-section');
       if (qrSection) {
         qrSection.classList.add('hidden');
@@ -505,12 +457,12 @@
         document.getElementById('host-event-banner').classList.add('hidden');
       }
 
-      // 玩家介面徹底重置與開放
       document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
+      document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
       
-      resetDispatchForm();
-      initSelects(totalCells || totalPlayersCount, currentDisabledMinion);
+      document.getElementById('dispatch-section').classList.remove('hidden');
+      initSelects(totalCells, currentDisabledMinion);
 
       if (eventInfo && eventInfo.description) {
         document.getElementById('player-event-desc').innerText = eventInfo.description;
@@ -560,8 +512,6 @@
 
         for (let i = 1; i <= totalCells; i++) {
           const info = summary[i];
-          if (!info) continue;
-
           const isBonus = i === bonusCell;
           let statusText = '';
           
@@ -586,6 +536,7 @@
             detailsHtml = `<div class="detail-list">⚔️無玩家派駐戰力</div>`;
           }
 
+          // 標頭顯示牢房號碼與房主名字
           const cellTitleName = info.ownerName ? ` (${info.ownerName})` : '';
 
           container.innerHTML += `
@@ -608,6 +559,7 @@
 
     socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
       renderPlayerList(players);
+      alert(`⚖️ ${cellNo} 號牢房平手裁決完畢！由 ${winnerName} 獲得該牢房糧食！`);
     });
 
     socket.on('gameOver', ({ message, leaderboard }) => {

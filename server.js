@@ -11,7 +11,7 @@ app.use(express.static('public'));
 const rooms = {};
 const MAX_ROUNDS = 4;
 
-// 🔒 角色與牢房號碼固定鎖定映射表
+// 🔒 1. 角色與牢房號碼固定鎖定映射表
 const CHARACTER_CELL_MAP = {
   '拉不拉卡': 1,
   '孫旺財': 2,
@@ -21,17 +21,6 @@ const CHARACTER_CELL_MAP = {
   '諸葛帥坤': 6,
   '小程': 7,
   '李小白': 8
-};
-
-const CHARACTER_ID_CELL_MAP = {
-  1: 1, // 拉不拉卡
-  2: 2, // 孫旺財
-  3: 3, // 唐三角
-  4: 4, // 雲蘇
-  5: 5, // 王元鵝
-  6: 6, // 諸葛帥坤
-  7: 7, // 小程
-  8: 8  // 李小白
 };
 
 function generateRoomCode() {
@@ -80,12 +69,22 @@ io.on('connection', (socket) => {
     if (!room) return socket.emit('errorMessage', '找不到該房間 Code！');
     if (room.isGameOver) return socket.emit('errorMessage', '該房間的遊戲已經結束！');
 
-    const charIdNum = parseInt(characterId);
-    if (room.takenCharacters.includes(charIdNum)) {
+    if (room.takenCharacters.includes(characterId)) {
       return socket.emit('errorMessage', '該角色已被其他玩家選擇，請選擇其他角色！');
     }
 
-    const cellNo = CHARACTER_ID_CELL_MAP[charIdNum] || CHARACTER_CELL_MAP[playerName];
+    const CHARACTER_ID_CELL_MAP = {
+      1: 1, // 拉不拉卡
+      2: 2, // 孫旺財
+      3: 3, // 雲蘇
+      4: 4, // 唐三角
+      5: 5, // 諸葛帥坤
+      6: 6, // 王元鵝
+      7: 7, // 小程
+      8: 8  // 李小白
+    };
+
+    const cellNo = CHARACTER_ID_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
 
     if (!cellNo) {
       return socket.emit('errorMessage', '無效的角色，找不到對應的牢房號碼！');
@@ -93,7 +92,7 @@ io.on('connection', (socket) => {
 
     const player = {
       id: socket.id,
-      characterId: charIdNum,
+      characterId,
       name: playerName,
       avatar: characterAvatar,
       cellNo: cellNo,
@@ -101,7 +100,7 @@ io.on('connection', (socket) => {
     };
 
     room.players.push(player);
-    room.takenCharacters.push(charIdNum);
+    room.takenCharacters.push(characterId);
 
     socket.join(roomId);
     socket.emit('joinSuccess', { 
@@ -131,9 +130,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // 重置本回合數據
     room.round += 1;
-    room.dispatches = {}; 
+    room.dispatches = {};
     room.disabledMinions = {};
 
     const totalCells = room.players.length;
@@ -165,10 +163,6 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
-    // 1. 廣播玩家列表更新
-    io.to(roomId).emit('updatePlayers', room.players);
-
-    // 2. 廣播回合開啟指令給所有玩家，觸發前端畫面與按鈕重置
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
@@ -176,20 +170,16 @@ io.on('connection', (socket) => {
       eventInfo
     });
 
-    // 3. 個別推送玩家本回合設置 (包括被封印的手下)
     room.players.forEach(p => {
       const disabledMinion = room.disabledMinions[p.id] || null;
-      io.to(p.id).emit('playerRoundConfig', { disabledMinion, round: room.round });
+      io.to(p.id).emit('playerRoundConfig', { disabledMinion });
     });
 
-    // 4. 通知主持人頁面進度重置
-    if (room.hostSocketId) {
-      io.to(room.hostSocketId).emit('hostBonusNotice', {
-        bonusCell,
-        submittedCount: 0,
-        totalPlayers: room.players.length
-      });
-    }
+    io.to(room.hostSocketId).emit('hostBonusNotice', {
+      bonusCell,
+      submittedCount: 0,
+      totalPlayers: room.players.length
+    });
   });
 
   // 5. 玩家提交兵力分配
@@ -201,13 +191,11 @@ io.on('connection', (socket) => {
     const submittedCount = Object.keys(room.dispatches).length;
     const totalPlayers = room.players.length;
 
-    if (room.hostSocketId) {
-      io.to(room.hostSocketId).emit('playerSubmittedNotice', {
-        playerId: socket.id,
-        submittedCount,
-        totalPlayers
-      });
-    }
+    io.to(room.hostSocketId).emit('playerSubmittedNotice', {
+      playerId: socket.id,
+      submittedCount,
+      totalPlayers
+    });
   });
 
   // 6. 執行回合結算
@@ -483,7 +471,6 @@ io.on('connection', (socket) => {
         winnerName: winner.name,
         players: room.players
       });
-      io.to(roomId).emit('updatePlayers', room.players);
     }
   });
 
