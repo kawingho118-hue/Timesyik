@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>牢房糧食爭奪戰</title>
-  <!-- 引入 Socket.io 及 QRCode 產生套件 -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <style>
@@ -106,7 +105,7 @@
 
   <h1>🔒 牢房糧食爭奪戰</h1>
 
-  <!-- 首頁：選擇身份 -->
+  <!-- 首頁 -->
   <div id="screen-home" class="container">
     <h2>歡迎進入遊戲</h2>
     <p style="color: var(--text-muted);">請選擇你的身份：</p>
@@ -114,14 +113,13 @@
     <button onclick="showPlayerJoin()" style="background-color: #10b981; margin-top: 15px;">我是玩家 (Player)</button>
   </div>
 
-  <!-- 主持人：大廳設定 -->
+  <!-- 主持人設定 -->
   <div id="screen-host-setup" class="container hidden">
     <h2>主持人控制面板</h2>
     <button onclick="createRoom()">建立新房間</button>
     <div id="host-room-info" class="hidden" style="margin-top: 20px;">
       <h3 style="color: var(--success);">房間代碼: <span id="display-room-code" style="font-size: 28px; color: white;"></span></h3>
       
-      <!-- QR Code 區塊 (第 1 回合或未開始時顯示) -->
       <div id="qr-section">
         <p>請玩家掃描以下 QR Code 加入遊戲：</p>
         <div id="qrcode-container">
@@ -136,7 +134,7 @@
     </div>
   </div>
 
-  <!-- 玩家：加入房間 -->
+  <!-- 玩家加入 -->
   <div id="screen-player-join" class="container hidden">
     <h2>加入遊戲房間</h2>
     <label>房間代碼 (4位數字):</label>
@@ -160,7 +158,7 @@
     <button onclick="joinRoom()">確認加入房間</button>
   </div>
 
-  <!-- 玩家：等待大廳 / 遊戲面板 -->
+  <!-- 玩家遊戲畫面 -->
   <div id="screen-player-game" class="container hidden">
     <h2>等待遊戲開始</h2>
     <div id="player-status-box" style="background: #334155; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
@@ -179,7 +177,7 @@
     </div>
   </div>
 
-  <!-- 主持人：回合進行與戰況面板 -->
+  <!-- 主持人遊戲畫面 -->
   <div id="screen-host-game" class="container hidden">
     <h2 id="host-game-title">回合進行中</h2>
     <p id="host-event-desc" style="color: #facc15; font-weight: bold;"></p>
@@ -190,7 +188,7 @@
     <button id="btn-calculate" onclick="triggerCalculate()" style="background-color: var(--danger);" disabled>執行本回合結算</button>
   </div>
 
-  <!-- 結算結果顯示面板 -->
+  <!-- 結算結果 -->
   <div id="screen-result" class="container hidden">
     <h2>⚖️ 回合結算結果</h2>
     <div id="result-content"></div>
@@ -201,7 +199,7 @@
     <button id="btn-next-round" onclick="startNextRound()" style="margin-top: 15px; background-color: var(--accent);">進入下一回合</button>
   </div>
 
-  <!-- 最終結算面板 -->
+  <!-- 最終結算 -->
   <div id="screen-game-over" class="container hidden">
     <h2>🏆 遊戲最終結算排行榜</h2>
     <div id="leaderboard-content"></div>
@@ -240,7 +238,6 @@
       document.getElementById('display-room-code').innerText = roomId;
       document.getElementById('host-room-info').classList.remove('hidden');
 
-      // 產生 QR Code
       const qrContainer = document.getElementById('qrcode');
       qrContainer.innerHTML = '';
       const joinUrl = `${window.location.origin}/?room=${roomId}`;
@@ -306,28 +303,20 @@
       `).join('');
     });
 
-    // 回合開始
     socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
       currentRound = round;
       
-      // 主持人在第 2 回合或以後自動隱藏 QR Code
       if (round > 1) {
         const qrSec = document.getElementById('qr-section');
         if (qrSec) qrSec.classList.add('hidden');
       }
 
-      // 切換到遊戲畫面
       document.getElementById('screen-host-setup').classList.add('hidden');
       document.getElementById('screen-result').classList.add('hidden');
-      if (socket.id === document.getElementById('display-room-code') ? false : true) {
-        // 主持人視角
-      }
       
-      // 判斷當前是主持人還是玩家
       if (document.getElementById('screen-host-setup').classList.contains('hidden') && myPlayerId === '') {
         // 主持人
       } else {
-        // 玩家畫面
         document.getElementById('round-dispatch-section').classList.remove('hidden');
         document.getElementById('current-round-title').innerText = `第 ${round} 回合佈署 (共 ${maxRounds} 回合)`;
         document.getElementById('event-description').innerText = eventInfo.description;
@@ -346,7 +335,6 @@
         noticeEl.innerText = '';
       }
 
-      // 產生 4 位手下 (m1 ~ m4) 的分配下拉選單
       for (let i = 1; i <= 4; i++) {
         const isDisabled = (disabledMinion === i);
         selectorsEl.innerHTML += `
@@ -361,7 +349,6 @@
     });
 
     function generateCellOptions() {
-      // 預設提供 1~8 號牢房選項供玩家選擇目標
       let opts = '';
       for (let i = 1; i <= 8; i++) {
         opts += `<option value="${i}">第 ${i} 號牢房</option>`;
@@ -372,7 +359,7 @@
     function submitMinions() {
       const dispatchMap = {};
       for (let i = 1; i <= 4; i++) {
-        if (disabledMinionPower === i) continue; // 略過被封印手下
+        if (disabledMinionPower === i) continue;
         const selectEl = document.getElementById(`m${i}`);
         if (selectEl) {
           dispatchMap[i] = parseInt(selectEl.value);
@@ -384,7 +371,6 @@
       document.getElementById('round-dispatch-section').classList.add('hidden');
     }
 
-    // 主持人收到玩家提交通知
     socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
       document.getElementById('screen-host-setup').classList.add('hidden');
       document.getElementById('screen-host-game').classList.remove('hidden');
@@ -422,7 +408,6 @@
 
       contentEl.innerHTML = html;
 
-      // 處理平手裁決
       const tieBox = document.getElementById('tie-resolution-box');
       const tieContainers = document.getElementById('tie-containers');
       if (tiesToResolve && tiesToResolve.length > 0) {
@@ -451,7 +436,7 @@
     });
 
     function showFinalLeaderboard() {
-      socket.emit('startNextRound', { roomId: currentRoomCode }); // 觸發後端結束判定
+      socket.emit('startNextRound', { roomId: currentRoomCode });
     }
 
     socket.on('gameOver', ({ message, leaderboard }) => {
