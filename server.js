@@ -115,7 +115,7 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
   });
 
-  // 4. 開始下一回合
+  // 4. 開始下一回合 (修復玩家版面沒反應問題)
   socket.on('startNextRound', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || room.players.length === 0) return;
@@ -130,8 +130,9 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // 重置本回合數據
     room.round += 1;
-    room.dispatches = {};
+    room.dispatches = {}; 
     room.disabledMinions = {};
 
     const totalCells = room.players.length;
@@ -163,8 +164,10 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
-    // 廣播最新玩家列表與回合啟動事件給房間全體成員
+    // 1. 廣播玩家列表更新
     io.to(roomId).emit('updatePlayers', room.players);
+
+    // 2. 廣播回合開啟指令給所有玩家，觸發前端畫面與按鈕重置
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
@@ -172,13 +175,13 @@ io.on('connection', (socket) => {
       eventInfo
     });
 
-    // 個別發送各玩家的特殊設定（如第3回合被封印的手下）
+    // 3. 個別推送玩家本回合設置 (包括被封印的手下)
     room.players.forEach(p => {
       const disabledMinion = room.disabledMinions[p.id] || null;
       io.to(p.id).emit('playerRoundConfig', { disabledMinion, round: room.round });
     });
 
-    // 通知主持人
+    // 4. 通知主持人頁面進度重置
     if (room.hostSocketId) {
       io.to(room.hostSocketId).emit('hostBonusNotice', {
         bonusCell,
@@ -461,7 +464,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. 手動裁決平手
+  // 7. 手動裁決平手 (無彈出式通知，僅靜默更新數據與排行榜)
   socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -472,11 +475,13 @@ io.on('connection', (socket) => {
       winner.totalScore += points;
       room.cellAccumulatedScores[cellNo] = 0;
 
+      // 靜默廣播最新分數，不發送會觸發 Alert/Modal 的事件
       io.to(roomId).emit('tieResolved', {
         cellNo,
         winnerName: winner.name,
         players: room.players
       });
+      io.to(roomId).emit('updatePlayers', room.players);
     }
   });
 
