@@ -447,29 +447,23 @@ io.on('connection', (socket) => {
   });
 
   // 7. 手動裁決平手
-  socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
-      currentRound = round;
-      
-      // 📌 雙重保障：同時加上 class 與直接改 inline style
-      const qrSection = document.getElementById('qrcode-section');
-      if (qrSection) {
-        qrSection.classList.add('hidden');
-        qrSection.style.display = 'none'; // 強制隱藏
-      }
+  socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
 
-      // 主持人介面更新
-      document.getElementById('start-round-btn').classList.add('hidden');
-      document.getElementById('calc-round-btn').classList.remove('hidden');
-      document.getElementById('host-results').innerHTML = '';
-      document.getElementById('host-tie-box').classList.add('hidden');
-      document.getElementById('tie-controls').innerHTML = '';
+    const winner = room.players.find(p => p.id === winnerPlayerId);
+    if (winner) {
+      let points = room.cellAccumulatedScores[cellNo] || 0;
+      winner.totalScore += points;
+      room.cellAccumulatedScores[cellNo] = 0;
 
-      if (eventInfo && eventInfo.description) {
-        document.getElementById('host-event-desc').innerText = eventInfo.description;
-        document.getElementById('host-event-banner').classList.remove('hidden');
-      } else {
-        document.getElementById('host-event-banner').classList.add('hidden');
-      }
+      io.to(roomId).emit('tieResolved', {
+        cellNo,
+        winnerName: winner.name,
+        players: room.players
+      });
+    }
+  });
 
   // 8. 廣播最新分數
   socket.on('publishUpdatedScores', ({ roomId }) => {
