@@ -450,10 +450,11 @@ io.on('connection', (socket) => {
   socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
       currentRound = round;
       
-      // 📌 新增：開始回合後（包括第1回合開始），立即隱藏 QR Code 區塊
+      // 📌 雙重保障：同時加上 class 與直接改 inline style
       const qrSection = document.getElementById('qrcode-section');
       if (qrSection) {
         qrSection.classList.add('hidden');
+        qrSection.style.display = 'none'; // 強制隱藏
       }
 
       // 主持人介面更新
@@ -469,7 +470,7 @@ io.on('connection', (socket) => {
       } else {
         document.getElementById('host-event-banner').classList.add('hidden');
       }
-      
+
   // 8. 廣播最新分數
   socket.on('publishUpdatedScores', ({ roomId }) => {
     const room = rooms[roomId];
