@@ -125,29 +125,33 @@ function joinRoom() {
   });
 }
 
-// 牢房選單生成邏輯（防呆防爆版）
+// 🛡️ 超強保險選單生成器：多重相容極限避錯
 function initSelects(totalCells, disabledMinion = null) {
   currentDisabledMinion = disabledMinion;
 
-  const maxSelectableCells = (totalCells && totalCells > 0) 
-    ? totalCells 
-    : (totalPlayersCount > 0 ? totalPlayersCount : 8);
+  // 兜底算式：如果有傳 totalCells 用 totalCells，沒有就用現有人數，再沒有預設 8 個牢房
+  let count = 8;
+  if (typeof totalCells === 'number' && totalCells > 0) {
+    count = totalCells;
+  } else if (totalPlayersCount > 0) {
+    count = totalPlayersCount;
+  }
 
   [1, 2, 3, 4].forEach(num => {
     const select = document.getElementById(`m${num}`);
     const row = document.getElementById(`row-m${num}`);
-    if (!select || !row) return;
+    if (!select) return;
 
     select.innerHTML = '';
 
     if (disabledMinion === num) {
-      row.classList.add('minion-disabled');
+      if (row) row.classList.add('minion-disabled');
       select.disabled = true;
       select.innerHTML = `<option value="0">⛔ 該手下受阻無法出戰</option>`;
     } else {
-      row.classList.remove('minion-disabled');
+      if (row) row.classList.remove('minion-disabled');
       select.disabled = false;
-      for (let i = 1; i <= maxSelectableCells; i++) {
+      for (let i = 1; i <= count; i++) {
         select.innerHTML += `<option value="${i}">前往 ${i} 號牢房</option>`;
       }
     }
@@ -156,10 +160,13 @@ function initSelects(totalCells, disabledMinion = null) {
 
 function startNextRound() {
   socket.emit('startNextRound', { roomId: currentRoomId });
+  // 相容舊寫法事件名
+  socket.emit('startRound', { roomId: currentRoomId });
 }
 
 function triggerCalculateResults() {
   socket.emit('triggerCalculateResults', { roomId: currentRoomId });
+  socket.emit('calcRound', { roomId: currentRoomId });
 }
 
 function publishUpdatedScores() {
@@ -197,7 +204,7 @@ function resolveTie(cellNo, selectId) {
 function renderPlayerList(players) {
   if (!players || !Array.isArray(players)) return;
   totalPlayersCount = players.length;
-  const sorted = [...players].sort((a, b) => b.totalScore - a.totalScore);
+  const sorted = [...players].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
 
   const hostList = document.getElementById('player-list');
   if (hostList) {
@@ -206,10 +213,10 @@ function renderPlayerList(players) {
       hostList.innerHTML += `
         <li class="player-item" id="p-${p.id}">
           <div style="display:flex; align-items:center;">
-            <img src="${p.avatar || '/images/default.png'}" class="player-avatar">
-            <span><b>第 ${idx + 1} 名</b> | ${p.name} (${p.cellNo} 號牢房)</span>
+            <img src="${p.avatar || p.characterAvatar || '/images/default.png'}" class="player-avatar">
+            <span><b>第 ${idx + 1} 名</b> | ${p.name || p.playerName} (${p.cellNo} 號牢房)</span>
           </div>
-          <span class="badge">${p.totalScore} 分</span>
+          <span class="badge">${p.totalScore || 0} 分</span>
         </li>`;
     });
   }
@@ -222,16 +229,16 @@ function renderPlayerList(players) {
       playerList.innerHTML += `
         <li class="player-item" style="${Number(p.cellNo) === Number(myCellNo) ? 'border: 1px solid #38bdf8;' : ''}">
           <div style="display:flex; align-items:center;">
-            <img src="${p.avatar || '/images/default.png'}" class="player-avatar">
-            <span><b>第 ${idx + 1} 名</b> | ${p.name} (${p.cellNo} 號牢房)${isMe}</span>
+            <img src="${p.avatar || p.characterAvatar || '/images/default.png'}" class="player-avatar">
+            <span><b>第 ${idx + 1} 名</b> | ${p.name || p.playerName} (${p.cellNo} 號牢房)${isMe}</span>
           </div>
-          <span class="badge" style="background:#38bdf8; color:#0f172a;">${p.totalScore} 分</span>
+          <span class="badge" style="background:#38bdf8; color:#0f172a;">${p.totalScore || 0} 分</span>
         </li>`;
     });
   }
 }
 
-// --- Socket.IO 監聽事件 (全面加入防呆防爆處理) ---
+// --- Socket.IO 監聽事件 ---
 
 socket.on('roomCreated', (data) => {
   currentRoomId = data.roomId;
@@ -239,7 +246,7 @@ socket.on('roomCreated', (data) => {
   if (roomDisplay) roomDisplay.innerText = data.roomId;
 
   const qrContainer = document.getElementById('qrcode');
-  if (qrContainer) {
+  if (qrContainer && typeof QRCode !== 'undefined') {
     qrContainer.innerHTML = '';
     const joinUrl = `${window.location.origin}`;
     new QRCode(qrContainer, {
@@ -260,7 +267,7 @@ socket.on('roomCreated', (data) => {
 });
 
 socket.on('updateTakenCharacters', (takenIds) => {
-  takenCharacterIds = takenIds;
+  takenCharacterIds = takenIds || [];
   renderCharacterSelect();
 });
 
@@ -275,6 +282,9 @@ socket.on('joinSuccess', (data) => {
   if (myAvatarDisplay) myAvatarDisplay.src = data.characterAvatar;
 
   showScreen('player-game-screen');
+  
+  // 💡 自動預載一次選單，確保進遊戲就有選單預備
+  initSelects(8, null);
 });
 
 socket.on('errorMessage', (msg) => {
@@ -287,11 +297,18 @@ socket.on('updatePlayers', (players) => {
   const cellCount = document.getElementById('cell-count');
   if (playerCount) playerCount.innerText = players.length;
   if (cellCount) cellCount.innerText = players.length;
+  
+  // 每次更新人數，同步刷新選單數量上限
+  initSelects(players.length, currentDisabledMinion);
 });
 
-socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
+socket.on('hostBonusNotice', (data) => {
+  const bonusCell = data.bonusCell;
+  const submittedCount = data.submittedCount || 0;
+  const totalPlayers = data.totalPlayers || totalPlayersCount;
+
   const secretBonusCell = document.getElementById('secret-bonus-cell');
-  if (secretBonusCell) secretBonusCell.innerText = bonusCell;
+  if (secretBonusCell && bonusCell) secretBonusCell.innerText = bonusCell;
 
   const submitProgress = document.getElementById('submit-progress');
   if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
@@ -300,18 +317,27 @@ socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
   if (hostSecretBox) hostSecretBox.classList.remove('hidden');
 });
 
-socket.on('playerSubmittedNotice', ({ submittedCount, totalPlayers }) => {
+socket.on('playerSubmittedNotice', (data) => {
+  const submittedCount = data.submittedCount || 0;
+  const totalPlayers = data.totalPlayers || totalPlayersCount;
   const submitProgress = document.getElementById('submit-progress');
   if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
 });
 
-socket.on('playerRoundConfig', ({ disabledMinion }) => {
+socket.on('playerRoundConfig', (data) => {
+  const disabledMinion = data ? data.disabledMinion : null;
   currentDisabledMinion = disabledMinion;
   initSelects(totalPlayersCount, currentDisabledMinion);
 });
 
-socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
-  currentRound = round;
+// ✅ 回合開始事件 (包含兼顧舊架構的多重相容)
+function handleRoundStart(data) {
+  data = data || {};
+  currentRound = data.round || 1;
+  const maxRounds = data.maxRounds || 5;
+  const totalCells = data.totalCells || totalPlayersCount || 8;
+  const eventInfo = data.eventInfo;
+
   currentDisabledMinion = null;
 
   const qrSection = document.getElementById('qrcode-section');
@@ -345,7 +371,7 @@ socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
   }
 
   const roundDisplay = document.getElementById('round-display');
-  if (roundDisplay) roundDisplay.innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
+  if (roundDisplay) roundDisplay.innerText = `第 ${currentRound} / ${maxRounds} 回合爭奪開始！`;
 
   const waitMsg = document.getElementById('wait-msg');
   if (waitMsg) waitMsg.innerText = '';
@@ -353,8 +379,10 @@ socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
   const playerResults = document.getElementById('player-results');
   if (playerResults) playerResults.innerHTML = '';
 
+  // 1. 初始化選單
   initSelects(totalCells, null);
 
+  // 2. 顯示派遣區域
   const dispatchSection = document.getElementById('dispatch-section');
   if (dispatchSection) dispatchSection.classList.remove('hidden');
 
@@ -366,7 +394,11 @@ socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
   } else if (playerEventBanner) {
     playerEventBanner.classList.add('hidden');
   }
-});
+}
+
+// 監聽常見的回合開始命名
+socket.on('roundStarted', handleRoundStart);
+socket.on('startRound', handleRoundStart);
 
 socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
   renderPlayerList(players);
@@ -381,7 +413,7 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
     if (calcBtn) calcBtn.classList.add('hidden');
     if (startBtn) {
       startBtn.classList.remove('hidden');
-      startBtn.innerText = `開始第 ${round + 1} 回合`;
+      startBtn.innerText = `開始第 ${(round || currentRound) + 1} 回合`;
     }
   }
 
@@ -392,7 +424,7 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
   if (tiesToResolve && tiesToResolve.length > 0) {
     if (tieBox) tieBox.classList.remove('hidden');
     tiesToResolve.forEach(item => {
-      let optionsHtml = item.tiedPlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      let optionsHtml = item.tiedPlayers.map(p => `<option value="${p.id}">${p.name || p.playerName}</option>`).join('');
       if (tieControls) {
         tieControls.innerHTML += `
           <div class="tie-row">
@@ -411,10 +443,11 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
   function renderCards(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">第 ${round} 回合戰果揭曉：</h3>`;
+    const cellLimit = totalCells || totalPlayersCount || 8;
+    container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">第 ${round || currentRound} 回合戰果揭曉：</h3>`;
 
-    for (let i = 1; i <= totalCells; i++) {
-      const info = summary[i];
+    for (let i = 1; i <= cellLimit; i++) {
+      const info = summary ? summary[i] : null;
       if (!info) continue;
       const isBonus = i === bonusCell;
       let statusText = '';
@@ -444,7 +477,7 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
 
       container.innerHTML += `
         <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
-          <div style="display:flex; justify-content:space-space; align-items:center; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <b style="font-size:16px;">📍 ${i} 號牢房${cellTitleName}</b>
             <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
           </div>
@@ -458,7 +491,7 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
   renderCards('player-results');
 
   const gameStatusBox = document.getElementById('game-status-box');
-  if (gameStatusBox) gameStatusBox.innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round} 回合結算完成！</p>`;
+  if (gameStatusBox) gameStatusBox.innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round || currentRound} 回合結算完成！</p>`;
 });
 
 socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
@@ -466,8 +499,8 @@ socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
   alert(`⚖️ ${cellNo} 號牢房平手裁決完畢！由 ${winnerName} 獲得該牢房糧食！`);
 });
 
-socket.on('gameOver', ({ message, leaderboard }) => {
-  alert(message);
+socket.on('gameOver', ({ message }) => {
+  alert(message || '遊戲結束！');
   const qrSection = document.getElementById('qrcode-section');
   if (qrSection) {
     qrSection.classList.add('hidden');
