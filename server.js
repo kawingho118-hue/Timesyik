@@ -19,11 +19,17 @@ const CHARACTERS = [
 let takenCharacterIds = [];
 
 function showScreen(screenId) {
-  document.getElementById('home-screen').classList.add('hidden');
-  document.getElementById('host-screen').classList.add('hidden');
-  document.getElementById('player-setup-screen').classList.add('hidden');
-  document.getElementById('player-game-screen').classList.add('hidden');
-  document.getElementById(screenId).classList.remove('hidden');
+  const screens = ['home-screen', 'host-screen', 'player-setup-screen', 'player-game-screen'];
+  screens.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (id === screenId) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
+  });
 }
 
 function showHostSetup() {
@@ -38,6 +44,7 @@ function showPlayerSetup() {
 
 function renderCharacterSelect() {
   const select = document.getElementById('character-select');
+  if (!select) return;
   const currentValue = select.value;
   select.innerHTML = '';
 
@@ -66,22 +73,28 @@ function onCharacterChange() {
 
 function updatePreview() {
   const select = document.getElementById('character-select');
+  const avatarImg = document.getElementById('preview-avatar');
+  const nameText = document.getElementById('preview-name');
+  if (!select) return;
+
   if (!select.value) {
-    document.getElementById('preview-avatar').src = '';
-    document.getElementById('preview-name').innerText = '無可用角色';
+    if (avatarImg) avatarImg.src = '';
+    if (nameText) nameText.innerText = '無可用角色';
     return;
   }
   const charId = parseInt(select.value);
   const char = CHARACTERS.find(c => c.id === charId);
 
   if (char) {
-    document.getElementById('preview-avatar').src = char.avatar;
-    document.getElementById('preview-name').innerText = char.name;
+    if (avatarImg) avatarImg.src = char.avatar;
+    if (nameText) nameText.innerText = char.name;
   }
 }
 
 function onRoomCodeChange() {
-  const code = document.getElementById('room-code-input').value.trim();
+  const codeInput = document.getElementById('room-code-input');
+  if (!codeInput) return;
+  const code = codeInput.value.trim();
   if (code.length === 4) {
     socket.emit('checkTakenCharacters', code);
   } else {
@@ -91,8 +104,12 @@ function onRoomCodeChange() {
 }
 
 function joinRoom() {
-  const code = document.getElementById('room-code-input').value.trim();
-  const charId = parseInt(document.getElementById('character-select').value);
+  const codeInput = document.getElementById('room-code-input');
+  const select = document.getElementById('character-select');
+  if (!codeInput || !select) return;
+
+  const code = codeInput.value.trim();
+  const charId = parseInt(select.value);
 
   if (!code) return alert('請輸入 4 位數房間 Code！');
   if (!charId) return alert('請選擇一個角色！');
@@ -108,11 +125,10 @@ function joinRoom() {
   });
 }
 
-// ✅ 核心修復：牢房選單生成邏輯（確保不會因變數未載入而生成空白選項）
+// 牢房選單生成邏輯（防呆防爆版）
 function initSelects(totalCells, disabledMinion = null) {
   currentDisabledMinion = disabledMinion;
 
-  // 優先採用傳入的 totalCells，若無則降級採用 totalPlayersCount，最後預設 8
   const maxSelectableCells = (totalCells && totalCells > 0) 
     ? totalCells 
     : (totalPlayersCount > 0 ? totalPlayersCount : 8);
@@ -154,18 +170,27 @@ function submitDispatch() {
   const dispatchMap = {};
   [1, 2, 3, 4].forEach(num => {
     if (currentDisabledMinion !== num) {
-      const val = parseInt(document.getElementById(`m${num}`).value);
-      if (val) dispatchMap[num] = val;
+      const el = document.getElementById(`m${num}`);
+      if (el) {
+        const val = parseInt(el.value);
+        if (val) dispatchMap[num] = val;
+      }
     }
   });
 
   socket.emit('submitMinions', { roomId: currentRoomId, dispatchMap });
-  document.getElementById('dispatch-section').classList.add('hidden');
-  document.getElementById('wait-msg').innerText = '✅ 陣容已提交，等待結算...';
+  
+  const dispatchSection = document.getElementById('dispatch-section');
+  if (dispatchSection) dispatchSection.classList.add('hidden');
+
+  const waitMsg = document.getElementById('wait-msg');
+  if (waitMsg) waitMsg.innerText = '✅ 陣容已提交，等待結算...';
 }
 
 function resolveTie(cellNo, selectId) {
-  const winnerPlayerId = document.getElementById(selectId).value;
+  const selectEl = document.getElementById(selectId);
+  if (!selectEl) return;
+  const winnerPlayerId = selectEl.value;
   socket.emit('resolveTie', { roomId: currentRoomId, cellNo, winnerPlayerId });
 }
 
@@ -206,27 +231,32 @@ function renderPlayerList(players) {
   }
 }
 
-// --- Socket.IO 監聽事件 ---
+// --- Socket.IO 監聽事件 (全面加入防呆防爆處理) ---
 
 socket.on('roomCreated', (data) => {
   currentRoomId = data.roomId;
-  document.getElementById('room-code-display').innerText = data.roomId;
+  const roomDisplay = document.getElementById('room-code-display');
+  if (roomDisplay) roomDisplay.innerText = data.roomId;
 
   const qrContainer = document.getElementById('qrcode');
-  qrContainer.innerHTML = '';
-  const joinUrl = `${window.location.origin}`;
-  new QRCode(qrContainer, {
-    text: joinUrl,
-    width: 140,
-    height: 140,
-    colorDark: "#000000",
-    colorLight: "#ffffff",
-    correctLevel: QRCode.CorrectLevel.H
-  });
+  if (qrContainer) {
+    qrContainer.innerHTML = '';
+    const joinUrl = `${window.location.origin}`;
+    new QRCode(qrContainer, {
+      text: joinUrl,
+      width: 140,
+      height: 140,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  }
 
   const qrSection = document.getElementById('qrcode-section');
-  qrSection.classList.remove('hidden');
-  qrSection.style.display = 'block';
+  if (qrSection) {
+    qrSection.classList.remove('hidden');
+    qrSection.style.display = 'block';
+  }
 });
 
 socket.on('updateTakenCharacters', (takenIds) => {
@@ -238,8 +268,11 @@ socket.on('joinSuccess', (data) => {
   currentRoomId = data.roomId;
   myCellNo = data.cellNo;
 
-  document.getElementById('player-cell-info').innerText = `${data.playerName} (${data.cellNo} 號牢房)`;
-  document.getElementById('my-avatar-display').src = data.characterAvatar;
+  const playerCellInfo = document.getElementById('player-cell-info');
+  if (playerCellInfo) playerCellInfo.innerText = `${data.playerName} (${data.cellNo} 號牢房)`;
+
+  const myAvatarDisplay = document.getElementById('my-avatar-display');
+  if (myAvatarDisplay) myAvatarDisplay.src = data.characterAvatar;
 
   showScreen('player-game-screen');
 });
@@ -250,100 +283,129 @@ socket.on('errorMessage', (msg) => {
 
 socket.on('updatePlayers', (players) => {
   renderPlayerList(players);
-  document.getElementById('player-count').innerText = players.length;
-  document.getElementById('cell-count').innerText = players.length;
+  const playerCount = document.getElementById('player-count');
+  const cellCount = document.getElementById('cell-count');
+  if (playerCount) playerCount.innerText = players.length;
+  if (cellCount) cellCount.innerText = players.length;
 });
 
 socket.on('hostBonusNotice', ({ bonusCell, submittedCount, totalPlayers }) => {
-  document.getElementById('secret-bonus-cell').innerText = bonusCell;
-  document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
-  document.getElementById('host-secret-box').classList.remove('hidden');
+  const secretBonusCell = document.getElementById('secret-bonus-cell');
+  if (secretBonusCell) secretBonusCell.innerText = bonusCell;
+
+  const submitProgress = document.getElementById('submit-progress');
+  if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
+
+  const hostSecretBox = document.getElementById('host-secret-box');
+  if (hostSecretBox) hostSecretBox.classList.remove('hidden');
 });
 
 socket.on('playerSubmittedNotice', ({ submittedCount, totalPlayers }) => {
-  document.getElementById('submit-progress').innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
+  const submitProgress = document.getElementById('submit-progress');
+  if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
 });
 
-// ✅ 核心修復：正確接收個人封印手下設置，並重繪選單
 socket.on('playerRoundConfig', ({ disabledMinion }) => {
   currentDisabledMinion = disabledMinion;
   initSelects(totalPlayersCount, currentDisabledMinion);
 });
 
-// ✅ 核心修復：新回合開始時重置介面與狀態
 socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
   currentRound = round;
-  currentDisabledMinion = null; // 重置封印狀態
+  currentDisabledMinion = null;
 
-  // 隱藏 QR Code
   const qrSection = document.getElementById('qrcode-section');
   if (qrSection) {
     qrSection.classList.add('hidden');
     qrSection.style.display = 'none';
   }
 
-  // 主持人端介面重置
-  document.getElementById('start-round-btn').classList.add('hidden');
-  document.getElementById('calc-round-btn').classList.remove('hidden');
-  document.getElementById('host-results').innerHTML = '';
-  document.getElementById('host-tie-box').classList.add('hidden');
-  document.getElementById('tie-controls').innerHTML = '';
+  const startBtn = document.getElementById('start-round-btn');
+  if (startBtn) startBtn.classList.add('hidden');
 
+  const calcBtn = document.getElementById('calc-round-btn');
+  if (calcBtn) calcBtn.classList.remove('hidden');
+
+  const hostResults = document.getElementById('host-results');
+  if (hostResults) hostResults.innerHTML = '';
+
+  const hostTieBox = document.getElementById('host-tie-box');
+  if (hostTieBox) hostTieBox.classList.add('hidden');
+
+  const tieControls = document.getElementById('tie-controls');
+  if (tieControls) tieControls.innerHTML = '';
+
+  const hostEventBanner = document.getElementById('host-event-banner');
+  const hostEventDesc = document.getElementById('host-event-desc');
   if (eventInfo && eventInfo.description) {
-    document.getElementById('host-event-desc').innerText = eventInfo.description;
-    document.getElementById('host-event-banner').classList.remove('hidden');
-  } else {
-    document.getElementById('host-event-banner').classList.add('hidden');
+    if (hostEventDesc) hostEventDesc.innerText = eventInfo.description;
+    if (hostEventBanner) hostEventBanner.classList.remove('hidden');
+  } else if (hostEventBanner) {
+    hostEventBanner.classList.add('hidden');
   }
 
-  // 玩家端介面重置
-  document.getElementById('round-display').innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
-  document.getElementById('wait-msg').innerText = '';
-  document.getElementById('player-results').innerHTML = '';
+  const roundDisplay = document.getElementById('round-display');
+  if (roundDisplay) roundDisplay.innerText = `第 ${round} / ${maxRounds} 回合爭奪開始！`;
 
-  // 重新初始化選單並解除派遣區隱藏
+  const waitMsg = document.getElementById('wait-msg');
+  if (waitMsg) waitMsg.innerText = '';
+
+  const playerResults = document.getElementById('player-results');
+  if (playerResults) playerResults.innerHTML = '';
+
   initSelects(totalCells, null);
-  document.getElementById('dispatch-section').classList.remove('hidden');
 
+  const dispatchSection = document.getElementById('dispatch-section');
+  if (dispatchSection) dispatchSection.classList.remove('hidden');
+
+  const playerEventBanner = document.getElementById('player-event-banner');
+  const playerEventDesc = document.getElementById('player-event-desc');
   if (eventInfo && eventInfo.description) {
-    document.getElementById('player-event-desc').innerText = eventInfo.description;
-    document.getElementById('player-event-banner').classList.remove('hidden');
-  } else {
-    document.getElementById('player-event-banner').classList.add('hidden');
+    if (playerEventDesc) playerEventDesc.innerText = eventInfo.description;
+    if (playerEventBanner) playerEventBanner.classList.remove('hidden');
+  } else if (playerEventBanner) {
+    playerEventBanner.classList.add('hidden');
   }
 });
 
 socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
   renderPlayerList(players);
 
+  const calcBtn = document.getElementById('calc-round-btn');
+  const startBtn = document.getElementById('start-round-btn');
+
   if (isLastRound) {
-    document.getElementById('calc-round-btn').classList.add('hidden');
-    document.getElementById('start-round-btn').classList.add('hidden');
+    if (calcBtn) calcBtn.classList.add('hidden');
+    if (startBtn) startBtn.classList.add('hidden');
   } else {
-    document.getElementById('calc-round-btn').classList.add('hidden');
-    document.getElementById('start-round-btn').classList.remove('hidden');
-    document.getElementById('start-round-btn').innerText = `開始第 ${round + 1} 回合`;
+    if (calcBtn) calcBtn.classList.add('hidden');
+    if (startBtn) {
+      startBtn.classList.remove('hidden');
+      startBtn.innerText = `開始第 ${round + 1} 回合`;
+    }
   }
 
   const tieBox = document.getElementById('host-tie-box');
   const tieControls = document.getElementById('tie-controls');
-  tieControls.innerHTML = '';
+  if (tieControls) tieControls.innerHTML = '';
 
   if (tiesToResolve && tiesToResolve.length > 0) {
-    tieBox.classList.remove('hidden');
+    if (tieBox) tieBox.classList.remove('hidden');
     tiesToResolve.forEach(item => {
       let optionsHtml = item.tiedPlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-      tieControls.innerHTML += `
-        <div class="tie-row">
-          <p style="color:#e9d5ff; font-size:14px; margin-bottom:4px;">⚠️ <b>${item.cellNo} 號牢房</b> 平手爭奪中 (${item.points} 分)：</p>
-          <div style="display:flex; gap:8px;">
-            <select id="tie-select-${item.cellNo}" style="margin:0; padding:6px;">${optionsHtml}</select>
-            <button class="btn-success" style="width:auto; margin:0; padding:6px 12px; font-size:14px;" onclick="resolveTie(${item.cellNo}, 'tie-select-${item.cellNo}')">決定分數</button>
-          </div>
-        </div>`;
+      if (tieControls) {
+        tieControls.innerHTML += `
+          <div class="tie-row">
+            <p style="color:#e9d5ff; font-size:14px; margin-bottom:4px;">⚠️ <b>${item.cellNo} 號牢房</b> 平手爭奪中 (${item.points} 分)：</p>
+            <div style="display:flex; gap:8px;">
+              <select id="tie-select-${item.cellNo}" style="margin:0; padding:6px;">${optionsHtml}</select>
+              <button class="btn-success" style="width:auto; margin:0; padding:6px 12px; font-size:14px;" onclick="resolveTie(${item.cellNo}, 'tie-select-${item.cellNo}')">決定分數</button>
+            </div>
+          </div>`;
+      }
     });
   } else {
-    tieBox.classList.add('hidden');
+    if (tieBox) tieBox.classList.add('hidden');
   }
 
   function renderCards(containerId) {
@@ -382,7 +444,7 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
 
       container.innerHTML += `
         <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-space; align-items:center; margin-bottom:6px;">
             <b style="font-size:16px;">📍 ${i} 號牢房${cellTitleName}</b>
             <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
           </div>
@@ -395,7 +457,8 @@ socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCel
   renderCards('host-results');
   renderCards('player-results');
 
-  document.getElementById('game-status-box').innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round} 回合結算完成！</p>`;
+  const gameStatusBox = document.getElementById('game-status-box');
+  if (gameStatusBox) gameStatusBox.innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round} 回合結算完成！</p>`;
 });
 
 socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
@@ -410,5 +473,6 @@ socket.on('gameOver', ({ message, leaderboard }) => {
     qrSection.classList.add('hidden');
     qrSection.style.display = 'none';
   }
-  document.getElementById('game-status-box').innerHTML = `<h2 style="color:#f59e0b;">🎉 遊戲結束！</h2>`;
+  const gameStatusBox = document.getElementById('game-status-box');
+  if (gameStatusBox) gameStatusBox.innerHTML = `<h2 style="color:#f59e0b;">🎉 遊戲結束！</h2>`;
 });
