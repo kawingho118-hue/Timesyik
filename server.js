@@ -28,6 +28,11 @@ function generateRoomCode() {
 }
 
 io.on('connection', (socket) => {
+  console.log(`[DEBUG] 新 socket 連接！socketId=${socket.id}`);
+  socket.on('disconnect', (reason) => {
+    console.log(`[DEBUG] ⚠️ socket 斷開連接！socketId=${socket.id} 原因=${reason}`);
+  });
+
   // 1. 主持人建立房間
   socket.on('createRoom', () => {
     let roomId = generateRoomCode();
@@ -43,17 +48,17 @@ io.on('connection', (socket) => {
       players: [],
       takenCharacters: [],
       dispatches: {},
-      cellAccumulatedScores: {}, // 記錄各牢房當前累積的糧食
+      cellAccumulatedScores: {},
       currentBonusCell: null,
-      disabledMinions: {}, // 第3回合：記錄各玩家被封印的手下 { socketId: minionPower }
+      disabledMinions: {},
       isGameOver: false
     };
 
     socket.join(roomId);
     socket.emit('roomCreated', { roomId, maxRounds: MAX_ROUNDS });
+    console.log(`[DEBUG] 房間已建立 roomId=${roomId} hostSocketId=${socket.id}`);
   });
 
-  // 2. 查詢已被選走的角色
   socket.on('checkTakenCharacters', (roomId) => {
     const room = rooms[roomId];
     if (room) {
@@ -63,7 +68,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 3. 玩家選擇角色並加入房間
   socket.on('joinRoom', ({ roomId, characterId, playerName, characterAvatar }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit('errorMessage', '找不到該房間 Code！');
@@ -74,14 +78,7 @@ io.on('connection', (socket) => {
     }
 
     const CHARACTER_ID_CELL_MAP = {
-      1: 1, // 拉不拉卡
-      2: 2, // 孫旺財
-      3: 3, // 雲蘇
-      4: 4, // 唐三角
-      5: 5, // 諸葛帥坤
-      6: 6, // 王元鵝
-      7: 7, // 小程
-      8: 8  // 李小白
+      1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8
     };
 
     const cellNo = CHARACTER_ID_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
@@ -103,22 +100,31 @@ io.on('connection', (socket) => {
     room.takenCharacters.push(characterId);
 
     socket.join(roomId);
-    socket.emit('joinSuccess', { 
-      roomId, 
-      playerName, 
-      characterAvatar, 
-      cellNo: player.cellNo, 
-      maxRounds: room.maxRounds 
+    socket.emit('joinSuccess', {
+      roomId,
+      playerName,
+      characterAvatar,
+      cellNo: player.cellNo,
+      maxRounds: room.maxRounds
     });
 
     io.to(roomId).emit('updatePlayers', room.players);
     io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
+    console.log(`[DEBUG] 玩家加入成功 roomId=${roomId} playerName=${playerName} socketId=${socket.id} 現時玩家數=${room.players.length}`);
   });
 
-  // 4. 開始下一回合
   socket.on('startNextRound', ({ roomId }) => {
+    console.log(`[DEBUG] 收到 startNextRound request！roomId=${roomId} 發出者socketId=${socket.id}`);
     const room = rooms[roomId];
-    if (!room || room.players.length === 0) return;
+    if (!room) {
+      console.log(`[DEBUG] ⚠️ 搵唔到 room！roomId=${roomId}`);
+      return;
+    }
+    if (room.players.length === 0) {
+      console.log(`[DEBUG] ⚠️ room 入面冇玩家！roomId=${roomId}`);
+      return;
+    }
+    console.log(`[DEBUG] 準備開始回合，目前 room.round=${room.round}，room.players.length=${room.players.length}，房間內sockets=${JSON.stringify(Array.from(io.sockets.adapter.rooms.get(roomId) || []))}`);
 
     if (room.round >= room.maxRounds) {
       room.isGameOver = true;
@@ -127,16 +133,17 @@ io.on('connection', (socket) => {
         message: `遊戲結束！已完成所有 ${room.maxRounds} 回合。`,
         leaderboard
       });
+      console.log(`[DEBUG] 遊戲已結束 roomId=${roomId}`);
       return;
     }
 
     room.round += 1;
+    console.log(`[DEBUG] room.round 已增加至 ${room.round}`);
     room.dispatches = {};
     room.disabledMinions = {};
 
     const totalCells = room.players.length;
 
-    // 隨機產生本回合 200 分 Bonus 牢房
     const bonusCell = Math.floor(Math.random() * totalCells) + 1;
     room.currentBonusCell = bonusCell;
 
@@ -148,7 +155,6 @@ io.on('connection', (socket) => {
       room.cellAccumulatedScores[i] += addedBase;
     }
 
-    // 事件設定
     let eventInfo = { round: room.round, description: '' };
     if (room.round === 1) {
       eventInfo.description = '無特殊事件，常規爭奪！';
@@ -163,16 +169,19 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
+    console.log(`[DEBUG] 準備 emit roundStarted！round=${room.round} totalCells=${totalCells} roomId=${roomId}`);
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
       totalCells,
       eventInfo
     });
+    console.log(`[DEBUG] 已 emit roundStarted 完成`);
 
     room.players.forEach(p => {
       const disabledMinion = room.disabledMinions[p.id] || null;
       io.to(p.id).emit('playerRoundConfig', { disabledMinion });
+      console.log(`[DEBUG] 已 emit playerRoundConfig 俾 player socketId=${p.id} disabledMinion=${disabledMinion}`);
     });
 
     io.to(room.hostSocketId).emit('hostBonusNotice', {
@@ -180,9 +189,9 @@ io.on('connection', (socket) => {
       submittedCount: 0,
       totalPlayers: room.players.length
     });
+    console.log(`[DEBUG] 已 emit hostBonusNotice 俾主持人`);
   });
 
-  // 5. 玩家提交兵力分配
   socket.on('submitMinions', ({ roomId, dispatchMap }) => {
     const room = rooms[roomId];
     if (!room || room.isGameOver) return;
@@ -198,8 +207,8 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 6. 執行回合結算
   socket.on('triggerCalculateResults', ({ roomId }) => {
+    console.log(`[DEBUG] 收到 triggerCalculateResults request！roomId=${roomId} 現時room.round=${rooms[roomId] ? rooms[roomId].round : '房間不存在'}`);
     const room = rooms[roomId];
     if (!room) return;
 
@@ -425,6 +434,7 @@ io.on('connection', (socket) => {
 
     const isLastRound = room.round >= room.maxRounds;
 
+    console.log(`[DEBUG] 準備 emit roundRevealed！round=${room.round} isLastRound=${isLastRound}`);
     io.to(roomId).emit('roundRevealed', {
       round: room.round,
       maxRounds: room.maxRounds,
@@ -446,7 +456,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. 手動裁決平手
   socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -465,7 +474,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 8. 廣播最新分數
   socket.on('publishUpdatedScores', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return;
