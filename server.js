@@ -1,516 +1,479 @@
-const socket = io();
-let currentRoomId = '';
-let myCellNo = 0;
-let currentDisabledMinion = null;
-let currentRound = 1;
-let totalPlayersCount = 0;
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 
-const CHARACTERS = [
-  { id: 1, name: '拉不拉卡', avatar: '/拉不拉卡.jpeg' },
-  { id: 2, name: '孫旺財',   avatar: '/孫旺財.jpeg' },
-  { id: 3, name: '雲蘇',     avatar: '/云蘇.jpeg' },
-  { id: 4, name: '唐三角',   avatar: '/唐三角.jpeg' },
-  { id: 5, name: '諸葛帥坤', avatar: '/諸葛帥坤.jpeg' },
-  { id: 6, name: '王元鵝',   avatar: '/王元鵝.jpeg' },
-  { id: 7, name: '小程',     avatar: '/小程.jpeg' },
-  { id: 8, name: '李小白',   avatar: '/李小白.jpeg' }
-];
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-let takenCharacterIds = [];
+app.use(express.static('public'));
 
-function showScreen(screenId) {
-  const screens = ['home-screen', 'host-screen', 'player-setup-screen', 'player-game-screen'];
-  screens.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      if (id === screenId) {
-        el.classList.remove('hidden');
-      } else {
-        el.classList.add('hidden');
-      }
+const rooms = {};
+const MAX_ROUNDS = 4;
+
+// 🔒 1. 角色與牢房號碼固定鎖定映射表
+const CHARACTER_CELL_MAP = {
+  '拉不拉卡': 1,
+  '孫旺財': 2,
+  '唐三角': 3,
+  '雲蘇': 4,
+  '王元鵝': 5,
+  '諸葛帥坤': 6,
+  '小程': 7,
+  '李小白': 8
+};
+
+function generateRoomCode() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+io.on('connection', (socket) => {
+  // 1. 主持人建立房間
+  socket.on('createRoom', () => {
+    let roomId = generateRoomCode();
+    while (rooms[roomId]) {
+      roomId = generateRoomCode();
     }
-  });
-}
 
-function showHostSetup() {
-  showScreen('host-screen');
-  socket.emit('createRoom');
-}
+    rooms[roomId] = {
+      roomId,
+      hostSocketId: socket.id,
+      round: 0,
+      maxRounds: MAX_ROUNDS,
+      players: [],
+      takenCharacters: [],
+      dispatches: {},
+      cellAccumulatedScores: {}, // 記錄各牢房當前累積的糧食
+      currentBonusCell: null,
+      disabledMinions: {}, // 第3回合：記錄各玩家被封印的手下 { socketId: minionPower }
+      isGameOver: false
+    };
 
-function showPlayerSetup() {
-  showScreen('player-setup-screen');
-  renderCharacterSelect();
-}
-
-function renderCharacterSelect() {
-  const select = document.getElementById('character-select');
-  if (!select) return;
-  const currentValue = select.value;
-  select.innerHTML = '';
-
-  CHARACTERS.forEach(char => {
-    const isTaken = takenCharacterIds.includes(char.id);
-    const option = document.createElement('option');
-    option.value = char.id;
-    option.textContent = isTaken ? `${char.name} (已被選擇)` : char.name;
-    option.disabled = isTaken;
-    select.appendChild(option);
+    socket.join(roomId);
+    socket.emit('roomCreated', { roomId, maxRounds: MAX_ROUNDS });
   });
 
-  if (currentValue && !takenCharacterIds.includes(parseInt(currentValue))) {
-    select.value = currentValue;
-  } else {
-    const availableChar = CHARACTERS.find(c => !takenCharacterIds.includes(c.id));
-    if (availableChar) select.value = availableChar.id;
-  }
-
-  updatePreview();
-}
-
-function onCharacterChange() {
-  updatePreview();
-}
-
-function updatePreview() {
-  const select = document.getElementById('character-select');
-  const avatarImg = document.getElementById('preview-avatar');
-  const nameText = document.getElementById('preview-name');
-  if (!select) return;
-
-  if (!select.value) {
-    if (avatarImg) avatarImg.src = '';
-    if (nameText) nameText.innerText = '無可用角色';
-    return;
-  }
-  const charId = parseInt(select.value);
-  const char = CHARACTERS.find(c => c.id === charId);
-
-  if (char) {
-    if (avatarImg) avatarImg.src = char.avatar;
-    if (nameText) nameText.innerText = char.name;
-  }
-}
-
-function onRoomCodeChange() {
-  const codeInput = document.getElementById('room-code-input');
-  if (!codeInput) return;
-  const code = codeInput.value.trim();
-  if (code.length === 4) {
-    socket.emit('checkTakenCharacters', code);
-  } else {
-    takenCharacterIds = [];
-    renderCharacterSelect();
-  }
-}
-
-function joinRoom() {
-  const codeInput = document.getElementById('room-code-input');
-  const select = document.getElementById('character-select');
-  if (!codeInput || !select) return;
-
-  const code = codeInput.value.trim();
-  const charId = parseInt(select.value);
-
-  if (!code) return alert('請輸入 4 位數房間 Code！');
-  if (!charId) return alert('請選擇一個角色！');
-  if (takenCharacterIds.includes(charId)) return alert('該角色已被選擇，請選取其他角色！');
-
-  const selectedChar = CHARACTERS.find(c => c.id === charId);
-
-  socket.emit('joinRoom', {
-    roomId: code,
-    characterId: selectedChar.id,
-    playerName: selectedChar.name,
-    characterAvatar: selectedChar.avatar
-  });
-}
-
-// 🛡️ 超強保險選單生成器：多重相容極限避錯
-function initSelects(totalCells, disabledMinion = null) {
-  currentDisabledMinion = disabledMinion;
-
-  // 兜底算式：如果有傳 totalCells 用 totalCells，沒有就用現有人數，再沒有預設 8 個牢房
-  let count = 8;
-  if (typeof totalCells === 'number' && totalCells > 0) {
-    count = totalCells;
-  } else if (totalPlayersCount > 0) {
-    count = totalPlayersCount;
-  }
-
-  [1, 2, 3, 4].forEach(num => {
-    const select = document.getElementById(`m${num}`);
-    const row = document.getElementById(`row-m${num}`);
-    if (!select) return;
-
-    select.innerHTML = '';
-
-    if (disabledMinion === num) {
-      if (row) row.classList.add('minion-disabled');
-      select.disabled = true;
-      select.innerHTML = `<option value="0">⛔ 該手下受阻無法出戰</option>`;
+  // 2. 查詢已被選走的角色
+  socket.on('checkTakenCharacters', (roomId) => {
+    const room = rooms[roomId];
+    if (room) {
+      socket.emit('updateTakenCharacters', room.takenCharacters);
     } else {
-      if (row) row.classList.remove('minion-disabled');
-      select.disabled = false;
-      for (let i = 1; i <= count; i++) {
-        select.innerHTML += `<option value="${i}">前往 ${i} 號牢房</option>`;
-      }
-    }
-  });
-}
-
-// 🔧 修改：以往呢度會一次過 emit 'startNextRound' 同 'startRound' 兩個event，
-// 導致server可能收到兩個request，觸發兩次開波邏輯，令回合狀態錯亂，
-// 令第二回合之後開始唔到。而家改為只send一個event。
-// ⚠️ 如果之後發現server.js嗰邊監聽緊嘅係 'startRound' 而唔係 'startNextRound'，
-// 只需要將下面呢個字串改返做 'startRound' 就得。
-function startNextRound() {
-  socket.emit('startNextRound', { roomId: currentRoomId });
-}
-
-// 🔧 同樣道理，呢度以往都係一次過 emit 兩個event ('triggerCalculateResults' 同 'calcRound')，
-// 有同樣嘅雙重觸發風險，一併修正為只send一個。
-// ⚠️ 如果server.js監聽緊嘅係 'calcRound'，將下面字串改返做 'calcRound' 即可。
-function triggerCalculateResults() {
-  socket.emit('triggerCalculateResults', { roomId: currentRoomId });
-}
-
-function publishUpdatedScores() {
-  socket.emit('publishUpdatedScores', { roomId: currentRoomId });
-}
-
-function submitDispatch() {
-  const dispatchMap = {};
-  [1, 2, 3, 4].forEach(num => {
-    if (currentDisabledMinion !== num) {
-      const el = document.getElementById(`m${num}`);
-      if (el) {
-        const val = parseInt(el.value);
-        if (val) dispatchMap[num] = val;
-      }
+      socket.emit('updateTakenCharacters', []);
     }
   });
 
-  socket.emit('submitMinions', { roomId: currentRoomId, dispatchMap });
-  
-  const dispatchSection = document.getElementById('dispatch-section');
-  if (dispatchSection) dispatchSection.classList.add('hidden');
+  // 3. 玩家選擇角色並加入房間
+  socket.on('joinRoom', ({ roomId, characterId, playerName, characterAvatar }) => {
+    const room = rooms[roomId];
+    if (!room) return socket.emit('errorMessage', '找不到該房間 Code！');
+    if (room.isGameOver) return socket.emit('errorMessage', '該房間的遊戲已經結束！');
 
-  const waitMsg = document.getElementById('wait-msg');
-  if (waitMsg) waitMsg.innerText = '✅ 陣容已提交，等待結算...';
-}
-
-function resolveTie(cellNo, selectId) {
-  const selectEl = document.getElementById(selectId);
-  if (!selectEl) return;
-  const winnerPlayerId = selectEl.value;
-  socket.emit('resolveTie', { roomId: currentRoomId, cellNo, winnerPlayerId });
-}
-
-function renderPlayerList(players) {
-  if (!players || !Array.isArray(players)) return;
-  totalPlayersCount = players.length;
-  const sorted = [...players].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
-
-  const hostList = document.getElementById('player-list');
-  if (hostList) {
-    hostList.innerHTML = '';
-    sorted.forEach((p, idx) => {
-      hostList.innerHTML += `
-        <li class="player-item" id="p-${p.id}">
-          <div style="display:flex; align-items:center;">
-            <img src="${p.avatar || p.characterAvatar || '/images/default.png'}" class="player-avatar">
-            <span><b>第 ${idx + 1} 名</b> | ${p.name || p.playerName} (${p.cellNo} 號牢房)</span>
-          </div>
-          <span class="badge">${p.totalScore || 0} 分</span>
-        </li>`;
-    });
-  }
-
-  const playerList = document.getElementById('player-score-list');
-  if (playerList) {
-    playerList.innerHTML = '';
-    sorted.forEach((p, idx) => {
-      const isMe = Number(p.cellNo) === Number(myCellNo) ? ' (你)' : '';
-      playerList.innerHTML += `
-        <li class="player-item" style="${Number(p.cellNo) === Number(myCellNo) ? 'border: 1px solid #38bdf8;' : ''}">
-          <div style="display:flex; align-items:center;">
-            <img src="${p.avatar || p.characterAvatar || '/images/default.png'}" class="player-avatar">
-            <span><b>第 ${idx + 1} 名</b> | ${p.name || p.playerName} (${p.cellNo} 號牢房)${isMe}</span>
-          </div>
-          <span class="badge" style="background:#38bdf8; color:#0f172a;">${p.totalScore || 0} 分</span>
-        </li>`;
-    });
-  }
-}
-
-// --- Socket.IO 監聽事件 ---
-
-socket.on('roomCreated', (data) => {
-  currentRoomId = data.roomId;
-  const roomDisplay = document.getElementById('room-code-display');
-  if (roomDisplay) roomDisplay.innerText = data.roomId;
-
-  const qrContainer = document.getElementById('qrcode');
-  if (qrContainer && typeof QRCode !== 'undefined') {
-    qrContainer.innerHTML = '';
-    const joinUrl = `${window.location.origin}`;
-    new QRCode(qrContainer, {
-      text: joinUrl,
-      width: 140,
-      height: 140,
-      colorDark: "#000000",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
-  }
-
-  const qrSection = document.getElementById('qrcode-section');
-  if (qrSection) {
-    qrSection.classList.remove('hidden');
-    qrSection.style.display = 'block';
-  }
-});
-
-socket.on('updateTakenCharacters', (takenIds) => {
-  takenCharacterIds = takenIds || [];
-  renderCharacterSelect();
-});
-
-socket.on('joinSuccess', (data) => {
-  currentRoomId = data.roomId;
-  myCellNo = data.cellNo;
-
-  const playerCellInfo = document.getElementById('player-cell-info');
-  if (playerCellInfo) playerCellInfo.innerText = `${data.playerName} (${data.cellNo} 號牢房)`;
-
-  const myAvatarDisplay = document.getElementById('my-avatar-display');
-  if (myAvatarDisplay) myAvatarDisplay.src = data.characterAvatar;
-
-  showScreen('player-game-screen');
-  
-  // 💡 自動預載一次選單，確保進遊戲就有選單預備
-  initSelects(8, null);
-});
-
-socket.on('errorMessage', (msg) => {
-  alert(msg);
-});
-
-socket.on('updatePlayers', (players) => {
-  renderPlayerList(players);
-  const playerCount = document.getElementById('player-count');
-  const cellCount = document.getElementById('cell-count');
-  if (playerCount) playerCount.innerText = players.length;
-  if (cellCount) cellCount.innerText = players.length;
-  
-  // 每次更新人數，同步刷新選單數量上限
-  initSelects(players.length, currentDisabledMinion);
-});
-
-socket.on('hostBonusNotice', (data) => {
-  const bonusCell = data.bonusCell;
-  const submittedCount = data.submittedCount || 0;
-  const totalPlayers = data.totalPlayers || totalPlayersCount;
-
-  const secretBonusCell = document.getElementById('secret-bonus-cell');
-  if (secretBonusCell && bonusCell) secretBonusCell.innerText = bonusCell;
-
-  const submitProgress = document.getElementById('submit-progress');
-  if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
-
-  const hostSecretBox = document.getElementById('host-secret-box');
-  if (hostSecretBox) hostSecretBox.classList.remove('hidden');
-});
-
-socket.on('playerSubmittedNotice', (data) => {
-  const submittedCount = data.submittedCount || 0;
-  const totalPlayers = data.totalPlayers || totalPlayersCount;
-  const submitProgress = document.getElementById('submit-progress');
-  if (submitProgress) submitProgress.innerText = `提交進度：${submittedCount} / ${totalPlayers} 人`;
-});
-
-socket.on('playerRoundConfig', (data) => {
-  const disabledMinion = data ? data.disabledMinion : null;
-  currentDisabledMinion = disabledMinion;
-  initSelects(totalPlayersCount, currentDisabledMinion);
-});
-
-// ✅ 回合開始事件 (包含兼顧舊架構的多重相容)
-function handleRoundStart(data) {
-  data = data || {};
-  currentRound = data.round || 1;
-  const maxRounds = data.maxRounds || 5;
-  const totalCells = data.totalCells || totalPlayersCount || 8;
-  const eventInfo = data.eventInfo;
-
-  currentDisabledMinion = null;
-
-  const qrSection = document.getElementById('qrcode-section');
-  if (qrSection) {
-    qrSection.classList.add('hidden');
-    qrSection.style.display = 'none';
-  }
-
-  const startBtn = document.getElementById('start-round-btn');
-  if (startBtn) startBtn.classList.add('hidden');
-
-  const calcBtn = document.getElementById('calc-round-btn');
-  if (calcBtn) calcBtn.classList.remove('hidden');
-
-  const hostResults = document.getElementById('host-results');
-  if (hostResults) hostResults.innerHTML = '';
-
-  const hostTieBox = document.getElementById('host-tie-box');
-  if (hostTieBox) hostTieBox.classList.add('hidden');
-
-  const tieControls = document.getElementById('tie-controls');
-  if (tieControls) tieControls.innerHTML = '';
-
-  const hostEventBanner = document.getElementById('host-event-banner');
-  const hostEventDesc = document.getElementById('host-event-desc');
-  if (eventInfo && eventInfo.description) {
-    if (hostEventDesc) hostEventDesc.innerText = eventInfo.description;
-    if (hostEventBanner) hostEventBanner.classList.remove('hidden');
-  } else if (hostEventBanner) {
-    hostEventBanner.classList.add('hidden');
-  }
-
-  const roundDisplay = document.getElementById('round-display');
-  if (roundDisplay) roundDisplay.innerText = `第 ${currentRound} / ${maxRounds} 回合爭奪開始！`;
-
-  const waitMsg = document.getElementById('wait-msg');
-  if (waitMsg) waitMsg.innerText = '';
-
-  const playerResults = document.getElementById('player-results');
-  if (playerResults) playerResults.innerHTML = '';
-
-  // 1. 初始化選單
-  initSelects(totalCells, null);
-
-  // 2. 顯示派遣區域
-  const dispatchSection = document.getElementById('dispatch-section');
-  if (dispatchSection) dispatchSection.classList.remove('hidden');
-
-  const playerEventBanner = document.getElementById('player-event-banner');
-  const playerEventDesc = document.getElementById('player-event-desc');
-  if (eventInfo && eventInfo.description) {
-    if (playerEventDesc) playerEventDesc.innerText = eventInfo.description;
-    if (playerEventBanner) playerEventBanner.classList.remove('hidden');
-  } else if (playerEventBanner) {
-    playerEventBanner.classList.add('hidden');
-  }
-}
-
-// 監聽常見的回合開始命名
-socket.on('roundStarted', handleRoundStart);
-socket.on('startRound', handleRoundStart);
-
-socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
-  renderPlayerList(players);
-
-  const calcBtn = document.getElementById('calc-round-btn');
-  const startBtn = document.getElementById('start-round-btn');
-
-  if (isLastRound) {
-    if (calcBtn) calcBtn.classList.add('hidden');
-    if (startBtn) startBtn.classList.add('hidden');
-  } else {
-    if (calcBtn) calcBtn.classList.add('hidden');
-    if (startBtn) {
-      startBtn.classList.remove('hidden');
-      startBtn.innerText = `開始第 ${(round || currentRound) + 1} 回合`;
+    if (room.takenCharacters.includes(characterId)) {
+      return socket.emit('errorMessage', '該角色已被其他玩家選擇，請選擇其他角色！');
     }
-  }
 
-  const tieBox = document.getElementById('host-tie-box');
-  const tieControls = document.getElementById('tie-controls');
-  if (tieControls) tieControls.innerHTML = '';
+    const CHARACTER_ID_CELL_MAP = {
+      1: 1, // 拉不拉卡
+      2: 2, // 孫旺財
+      3: 3, // 雲蘇
+      4: 4, // 唐三角
+      5: 5, // 諸葛帥坤
+      6: 6, // 王元鵝
+      7: 7, // 小程
+      8: 8  // 李小白
+    };
 
-  if (tiesToResolve && tiesToResolve.length > 0) {
-    if (tieBox) tieBox.classList.remove('hidden');
-    tiesToResolve.forEach(item => {
-      let optionsHtml = item.tiedPlayers.map(p => `<option value="${p.id}">${p.name || p.playerName}</option>`).join('');
-      if (tieControls) {
-        tieControls.innerHTML += `
-          <div class="tie-row">
-            <p style="color:#e9d5ff; font-size:14px; margin-bottom:4px;">⚠️ <b>${item.cellNo} 號牢房</b> 平手爭奪中 (${item.points} 分)：</p>
-            <div style="display:flex; gap:8px;">
-              <select id="tie-select-${item.cellNo}" style="margin:0; padding:6px;">${optionsHtml}</select>
-              <button class="btn-success" style="width:auto; margin:0; padding:6px 12px; font-size:14px;" onclick="resolveTie(${item.cellNo}, 'tie-select-${item.cellNo}')">決定分數</button>
-            </div>
-          </div>`;
-      }
-    });
-  } else {
-    if (tieBox) tieBox.classList.add('hidden');
-  }
+    const cellNo = CHARACTER_ID_CELL_MAP[characterId] || CHARACTER_CELL_MAP[playerName];
 
-  function renderCards(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const cellLimit = totalCells || totalPlayersCount || 8;
-    container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">第 ${round || currentRound} 回合戰果揭曉：</h3>`;
-
-    for (let i = 1; i <= cellLimit; i++) {
-      const info = summary ? summary[i] : null;
-      if (!info) continue;
-      const isBonus = i === bonusCell;
-      let statusText = '';
-
-      if (info.status === 'WIN') {
-        const isDefenseSuccess = Number(info.winnerCellNo) === Number(i);
-        const roleTitle = isDefenseSuccess ? '房主' : '搶奪者';
-        const actionText = isDefenseSuccess ? '防守成功!' : '搶奪成功!';
-
-        statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${roleTitle} ${info.winnerName} (${info.power} 點戰力) ${actionText} 獨得 ${info.points} 糧食!</span>`;
-      } else if (info.status === 'TIE') {
-        statusText = `<span style="color:#c084fc; font-weight:bold;">⚖️ 平手待裁決 (${info.power} 點戰力)</span>`;
-      } else {
-        statusText = `<span style="color:#94a3b8;">⚪無人爭奪</span>`;
-      }
-
-      let detailsHtml = '';
-      if (info.details && info.details.length > 0) {
-        detailsHtml = `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>` + 
-          info.details.map(d => `• ${d.playerName} (來自 ${d.fromCellNo} 號牢房)：派出 ${d.power} 點戰力`).join('<br>') + 
-          `</div>`;
-      } else {
-        detailsHtml = `<div class="detail-list">⚔️無玩家派駐戰力</div>`;
-      }
-
-      const cellTitleName = info.ownerName ? ` (${info.ownerName})` : '';
-
-      container.innerHTML += `
-        <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <b style="font-size:16px;">📍 ${i} 號牢房${cellTitleName}</b>
-            <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
-          </div>
-          <div>${statusText}</div>
-          ${detailsHtml}
-        </div>`;
+    if (!cellNo) {
+      return socket.emit('errorMessage', '無效的角色，找不到對應的牢房號碼！');
     }
-  }
 
-  renderCards('host-results');
-  renderCards('player-results');
+    const player = {
+      id: socket.id,
+      characterId,
+      name: playerName,
+      avatar: characterAvatar,
+      cellNo: cellNo,
+      totalScore: 0
+    };
 
-  const gameStatusBox = document.getElementById('game-status-box');
-  if (gameStatusBox) gameStatusBox.innerHTML = `<p style="color:#4ade80; font-weight:bold;">第 ${round || currentRound} 回合結算完成！</p>`;
+    room.players.push(player);
+    room.takenCharacters.push(characterId);
+
+    socket.join(roomId);
+    socket.emit('joinSuccess', { 
+      roomId, 
+      playerName, 
+      characterAvatar, 
+      cellNo: player.cellNo, 
+      maxRounds: room.maxRounds 
+    });
+
+    io.to(roomId).emit('updatePlayers', room.players);
+    io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
+  });
+
+  // 4. 開始下一回合
+  socket.on('startNextRound', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || room.players.length === 0) return;
+
+    if (room.round >= room.maxRounds) {
+      room.isGameOver = true;
+      const leaderboard = [...room.players].sort((a, b) => b.totalScore - a.totalScore);
+      io.to(roomId).emit('gameOver', {
+        message: `遊戲結束！已完成所有 ${room.maxRounds} 回合。`,
+        leaderboard
+      });
+      return;
+    }
+
+    room.round += 1;
+    room.dispatches = {};
+    room.disabledMinions = {};
+
+    const totalCells = room.players.length;
+
+    // 隨機產生本回合 200 分 Bonus 牢房
+    const bonusCell = Math.floor(Math.random() * totalCells) + 1;
+    room.currentBonusCell = bonusCell;
+
+    for (let i = 1; i <= totalCells; i++) {
+      if (room.cellAccumulatedScores[i] === undefined) {
+        room.cellAccumulatedScores[i] = 0;
+      }
+      const addedBase = (i === room.currentBonusCell) ? 200 : 100;
+      room.cellAccumulatedScores[i] += addedBase;
+    }
+
+    // 事件設定
+    let eventInfo = { round: room.round, description: '' };
+    if (room.round === 1) {
+      eventInfo.description = '無特殊事件，常規爭奪！';
+    } else if (room.round === 2) {
+      eventInfo.description = '🔥 雙倍食糧事件：本回合中，搶奪者總和戰力最高的牢房糧食分數翻倍（x2）！';
+    } else if (room.round === 3) {
+      eventInfo.description = '🚫 兵力受阻事件：本回合中，每位玩家隨機有 1 位手下無法出戰！';
+      room.players.forEach(p => {
+        room.disabledMinions[p.id] = Math.floor(Math.random() * 4) + 1;
+      });
+    } else if (room.round === 4) {
+      eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
+    }
+
+    io.to(roomId).emit('roundStarted', {
+      round: room.round,
+      maxRounds: room.maxRounds,
+      totalCells,
+      eventInfo
+    });
+
+    room.players.forEach(p => {
+      const disabledMinion = room.disabledMinions[p.id] || null;
+      io.to(p.id).emit('playerRoundConfig', { disabledMinion });
+    });
+
+    io.to(room.hostSocketId).emit('hostBonusNotice', {
+      bonusCell,
+      submittedCount: 0,
+      totalPlayers: room.players.length
+    });
+  });
+
+  // 5. 玩家提交兵力分配
+  socket.on('submitMinions', ({ roomId, dispatchMap }) => {
+    const room = rooms[roomId];
+    if (!room || room.isGameOver) return;
+
+    room.dispatches[socket.id] = dispatchMap;
+    const submittedCount = Object.keys(room.dispatches).length;
+    const totalPlayers = room.players.length;
+
+    io.to(room.hostSocketId).emit('playerSubmittedNotice', {
+      playerId: socket.id,
+      submittedCount,
+      totalPlayers
+    });
+  });
+
+  // 6. 執行回合結算
+  socket.on('triggerCalculateResults', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const totalCells = room.players.length;
+    const summary = {};
+    const tiesToResolve = [];
+
+    const actualCellPoints = {};
+    for (let i = 1; i <= totalCells; i++) {
+      actualCellPoints[i] = room.cellAccumulatedScores[i] || 0;
+    }
+
+    const cellPowerMap = {};
+    for (let c = 1; c <= totalCells; c++) cellPowerMap[c] = {};
+
+    Object.entries(room.dispatches).forEach(([pId, dispatchMap]) => {
+      Object.entries(dispatchMap).forEach(([minionPowerStr, targetCellNo]) => {
+        const minionPower = parseInt(minionPowerStr);
+        const cellNo = parseInt(targetCellNo);
+
+        if (room.round === 3 && room.disabledMinions[pId] === minionPower) {
+          return;
+        }
+
+        if (cellPowerMap[cellNo]) {
+          if (!cellPowerMap[cellNo][pId]) cellPowerMap[cellNo][pId] = 0;
+          cellPowerMap[cellNo][pId] += minionPower;
+        }
+      });
+    });
+
+    let doubleBonusCellNo = null;
+    if (room.round === 2) {
+      let maxTotalInvaderPower = 0;
+      for (let c = 1; c <= totalCells; c++) {
+        const owner = room.players.find(p => p.cellNo === c);
+        const invaderEntries = Object.entries(cellPowerMap[c]).filter(([pId]) => !owner || pId !== owner.id);
+        const invaderPowerSum = invaderEntries.reduce((sum, [_, pPower]) => sum + pPower, 0);
+
+        if (invaderPowerSum > maxTotalInvaderPower) {
+          maxTotalInvaderPower = invaderPowerSum;
+          doubleBonusCellNo = c;
+        }
+      }
+      if (doubleBonusCellNo && maxTotalInvaderPower > 0) {
+        actualCellPoints[doubleBonusCellNo] *= 2;
+      } else {
+        doubleBonusCellNo = null;
+      }
+    }
+
+    for (let i = 1; i <= totalCells; i++) {
+      summary[i] = {
+        points: actualCellPoints[i],
+        isDouble: i === doubleBonusCellNo,
+        status: 'NONE',
+        winnerName: '',
+        power: 0,
+        details: []
+      };
+    }
+
+    for (let cellNo = 1; cellNo <= totalCells; cellNo++) {
+      const powers = cellPowerMap[cellNo];
+      const owner = room.players.find(p => p.cellNo === cellNo);
+      const ownerPower = owner && powers[owner.id] ? powers[owner.id] : 0;
+      const currentPoints = actualCellPoints[cellNo];
+
+      Object.entries(powers).forEach(([pId, pPower]) => {
+        const pObj = room.players.find(p => p.id === pId);
+        if (pObj && pPower > 0) {
+          summary[cellNo].details.push({
+            playerName: pObj.name,
+            cellNo: cellNo,
+            fromCellNo: pObj.cellNo,
+            power: pPower
+          });
+        }
+      });
+
+      const invaderEntries = Object.entries(powers).filter(([pId, pPower]) => (!owner || pId !== owner.id) && pPower > 0);
+      const totalInvaderPower = invaderEntries.reduce((sum, [_, pPower]) => sum + pPower, 0);
+
+      if (ownerPower === 0 && totalInvaderPower === 0) {
+        room.cellAccumulatedScores[cellNo] = currentPoints;
+        continue;
+      }
+
+      if (owner) {
+        if (invaderEntries.length === 0) {
+          if (ownerPower > 0) {
+            owner.totalScore += currentPoints;
+            summary[cellNo].status = 'WIN';
+            summary[cellNo].winnerName = `${owner.name} (獨守成功 +${currentPoints}分)`;
+            summary[cellNo].power = ownerPower;
+          } else {
+            summary[cellNo].status = 'NONE';
+          }
+          room.cellAccumulatedScores[cellNo] = 0;
+          continue;
+        }
+
+        if (invaderEntries.length === 1) {
+          const [invaderId, invaderPower] = invaderEntries[0];
+          const invader = room.players.find(p => p.id === invaderId);
+
+          if (ownerPower > invaderPower) {
+            owner.totalScore += currentPoints;
+            summary[cellNo].status = 'WIN';
+            summary[cellNo].winnerName = `${owner.name} (防守成功 +${currentPoints}分)`;
+            summary[cellNo].power = ownerPower;
+            room.cellAccumulatedScores[cellNo] = 0;
+          } else if (invaderPower > ownerPower) {
+            invader.totalScore += currentPoints;
+            summary[cellNo].status = 'WIN';
+            summary[cellNo].winnerName = invader.name;
+            summary[cellNo].power = invaderPower;
+            room.cellAccumulatedScores[cellNo] = 0;
+          } else {
+            summary[cellNo].status = 'TIE';
+            summary[cellNo].power = ownerPower;
+            tiesToResolve.push({
+              cellNo,
+              points: currentPoints,
+              tiedPlayers: [owner, invader]
+            });
+          }
+          continue;
+        }
+
+        if (invaderEntries.length > 1) {
+          if (ownerPower >= totalInvaderPower) {
+            owner.totalScore += currentPoints;
+            summary[cellNo].status = 'WIN';
+            summary[cellNo].winnerName = `${owner.name} (擊退所有搶奪者 +${currentPoints}分)`;
+            summary[cellNo].power = ownerPower;
+            room.cellAccumulatedScores[cellNo] = 0;
+          } else {
+            let targetInvaders = [];
+            let targetPower = 0;
+
+            if (room.round === 4) {
+              let minPower = Infinity;
+              invaderEntries.forEach(([_, pPower]) => {
+                if (pPower < minPower) minPower = pPower;
+              });
+              targetPower = minPower;
+              targetInvaders = invaderEntries
+                .filter(([_, pPower]) => pPower === minPower)
+                .map(([pId]) => room.players.find(p => p.id === pId));
+            } else {
+              let maxPower = 0;
+              invaderEntries.forEach(([_, pPower]) => {
+                if (pPower > maxPower) maxPower = pPower;
+              });
+              targetPower = maxPower;
+              targetInvaders = invaderEntries
+                .filter(([_, pPower]) => pPower === maxPower)
+                .map(([pId]) => room.players.find(p => p.id === pId));
+            }
+
+            if (targetInvaders.length === 1) {
+              const winner = targetInvaders[0];
+              winner.totalScore += currentPoints;
+              summary[cellNo].status = 'WIN';
+              summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+              summary[cellNo].power = targetPower;
+              room.cellAccumulatedScores[cellNo] = 0;
+            } else {
+              summary[cellNo].status = 'TIE';
+              summary[cellNo].power = targetPower;
+              tiesToResolve.push({
+                cellNo,
+                points: currentPoints,
+                tiedPlayers: targetInvaders
+              });
+            }
+          }
+          continue;
+        }
+      } else {
+        let targetPlayers = [];
+        let targetPower = 0;
+
+        if (room.round === 4) {
+          let minPower = Infinity;
+          invaderEntries.forEach(([_, pPower]) => {
+            if (pPower < minPower) minPower = pPower;
+          });
+          targetPower = minPower;
+          targetPlayers = invaderEntries
+            .filter(([_, pPower]) => pPower === minPower)
+            .map(([pId]) => room.players.find(p => p.id === pId));
+        } else {
+          let maxPower = 0;
+          invaderEntries.forEach(([_, pPower]) => {
+            if (pPower > maxPower) maxPower = pPower;
+          });
+          targetPower = maxPower;
+          targetPlayers = invaderEntries
+            .filter(([_, pPower]) => pPower === maxPower)
+            .map(([pId]) => room.players.find(p => p.id === pId));
+        }
+
+        if (targetPlayers.length === 1) {
+          const winner = targetPlayers[0];
+          winner.totalScore += currentPoints;
+          summary[cellNo].status = 'WIN';
+          summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+          summary[cellNo].power = targetPower;
+          room.cellAccumulatedScores[cellNo] = 0;
+        } else if (targetPlayers.length > 1) {
+          summary[cellNo].status = 'TIE';
+          summary[cellNo].power = targetPower;
+          tiesToResolve.push({
+            cellNo,
+            points: currentPoints,
+            tiedPlayers: targetPlayers
+          });
+        }
+      }
+    }
+
+    const isLastRound = room.round >= room.maxRounds;
+
+    io.to(roomId).emit('roundRevealed', {
+      round: room.round,
+      maxRounds: room.maxRounds,
+      isLastRound,
+      bonusCell: room.currentBonusCell,
+      totalCells,
+      summary,
+      players: room.players,
+      tiesToResolve
+    });
+
+    if (isLastRound) {
+      room.isGameOver = true;
+      const leaderboard = [...room.players].sort((a, b) => b.totalScore - a.totalScore);
+      io.to(roomId).emit('gameOver', {
+        message: `遊戲結束！已完成所有 ${room.maxRounds} 回合。`,
+        leaderboard
+      });
+    }
+  });
+
+  // 7. 手動裁決平手
+  socket.on('resolveTie', ({ roomId, cellNo, winnerPlayerId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const winner = room.players.find(p => p.id === winnerPlayerId);
+    if (winner) {
+      let points = room.cellAccumulatedScores[cellNo] || 0;
+      winner.totalScore += points;
+      room.cellAccumulatedScores[cellNo] = 0;
+
+      io.to(roomId).emit('tieResolved', {
+        cellNo,
+        winnerName: winner.name,
+        players: room.players
+      });
+    }
+  });
+
+  // 8. 廣播最新分數
+  socket.on('publishUpdatedScores', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    io.to(roomId).emit('updatePlayers', room.players);
+  });
 });
 
-socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
-  renderPlayerList(players);
-  alert(`⚖️ ${cellNo} 號牢房平手裁決完畢！由 ${winnerName} 獲得該牢房糧食！`);
-});
-
-socket.on('gameOver', ({ message }) => {
-  alert(message || '遊戲結束！');
-  const qrSection = document.getElementById('qrcode-section');
-  if (qrSection) {
-    qrSection.classList.add('hidden');
-    qrSection.style.display = 'none';
-  }
-  const gameStatusBox = document.getElementById('game-status-box');
-  if (gameStatusBox) gameStatusBox.innerHTML = `<h2 style="color:#f59e0b;">🎉 遊戲結束！</h2>`;
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
