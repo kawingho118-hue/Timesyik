@@ -191,6 +191,20 @@
     let currentRound = 1;
     let totalPlayersCount = 0;
 
+    // 🐛 除錯：連線狀態追蹤
+    socket.on('connect', () => {
+      console.log('%c[DEBUG] socket 已連接，id=' + socket.id, 'color:lime;font-weight:bold;font-size:14px;');
+    });
+    socket.on('disconnect', (reason) => {
+      console.log('%c[DEBUG] ⚠️ socket 已斷線！原因：' + reason, 'color:red;font-weight:bold;font-size:14px;');
+    });
+    socket.io.on('reconnect', (attempt) => {
+      console.log('%c[DEBUG] ⚠️ socket 已重新連接！次數：' + attempt + ' 新id=' + socket.id, 'color:orange;font-weight:bold;font-size:14px;');
+    });
+    socket.io.on('reconnect_attempt', (attempt) => {
+      console.log('%c[DEBUG] 正在嘗試重新連接...第 ' + attempt + ' 次', 'color:orange;');
+    });
+
     const CHARACTERS = [
       { id: 1, name: '拉不拉卡', avatar: '/拉不拉卡.jpeg' },
       { id: 2, name: '孫旺財',   avatar: '/孫旺財.jpeg' },
@@ -320,6 +334,7 @@
     }
 
     function startNextRound() {
+      console.log('%c[DEBUG] 主持人emit startNextRound，roomId=' + currentRoomId, 'color:yellow;font-weight:bold;font-size:14px;');
       socket.emit('startNextRound', { roomId: currentRoomId });
     }
 
@@ -443,10 +458,12 @@
     });
 
     socket.on('playerRoundConfig', ({ disabledMinion }) => {
+      console.log('%c[DEBUG] 收到 playerRoundConfig！disabledMinion=' + disabledMinion, 'color:cyan;font-weight:bold;font-size:14px;');
       initSelects(totalPlayersCount, disabledMinion);
     });
 
     socket.on('roundStarted', ({ round, maxRounds, totalCells, eventInfo }) => {
+      console.log('%c[DEBUG] ✅ 收到 roundStarted！round=' + round + ' totalCells=' + totalCells, 'color:cyan;font-weight:bold;font-size:16px;');
       currentRound = round;
       
       // 🔒 強制隱藏 QR Code 區塊
@@ -475,6 +492,7 @@
       document.getElementById('wait-msg').innerText = '';
       document.getElementById('player-results').innerHTML = '';
       document.getElementById('dispatch-section').classList.remove('hidden');
+      console.log('%c[DEBUG] dispatch-section 已設為顯示，classList=' + document.getElementById('dispatch-section').className, 'color:cyan;');
 
       if (eventInfo && eventInfo.description) {
         document.getElementById('player-event-desc').innerText = eventInfo.description;
@@ -485,6 +503,7 @@
     });
 
     socket.on('roundRevealed', ({ round, maxRounds, isLastRound, bonusCell, totalCells, summary, players, tiesToResolve }) => {
+      console.log('%c[DEBUG] 收到 roundRevealed！round=' + round, 'color:magenta;font-weight:bold;font-size:14px;');
       renderPlayerList(players);
 
       if (isLastRound) {
