@@ -158,15 +158,20 @@ function initSelects(totalCells, disabledMinion = null) {
   });
 }
 
+// 🔧 修改：以往呢度會一次過 emit 'startNextRound' 同 'startRound' 兩個event，
+// 導致server可能收到兩個request，觸發兩次開波邏輯，令回合狀態錯亂，
+// 令第二回合之後開始唔到。而家改為只send一個event。
+// ⚠️ 如果之後發現server.js嗰邊監聽緊嘅係 'startRound' 而唔係 'startNextRound'，
+// 只需要將下面呢個字串改返做 'startRound' 就得。
 function startNextRound() {
   socket.emit('startNextRound', { roomId: currentRoomId });
-  // 相容舊寫法事件名
-  socket.emit('startRound', { roomId: currentRoomId });
 }
 
+// 🔧 同樣道理，呢度以往都係一次過 emit 兩個event ('triggerCalculateResults' 同 'calcRound')，
+// 有同樣嘅雙重觸發風險，一併修正為只send一個。
+// ⚠️ 如果server.js監聽緊嘅係 'calcRound'，將下面字串改返做 'calcRound' 即可。
 function triggerCalculateResults() {
   socket.emit('triggerCalculateResults', { roomId: currentRoomId });
-  socket.emit('calcRound', { roomId: currentRoomId });
 }
 
 function publishUpdatedScores() {
