@@ -28,11 +28,6 @@ function generateRoomCode() {
 }
 
 io.on('connection', (socket) => {
-  console.log(`[DEBUG] 新 socket 連接！socketId=${socket.id}`);
-  socket.on('disconnect', (reason) => {
-    console.log(`[DEBUG] ⚠️ socket 斷開連接！socketId=${socket.id} 原因=${reason}`);
-  });
-
   // 1. 主持人建立房間
   socket.on('createRoom', () => {
     let roomId = generateRoomCode();
@@ -56,7 +51,6 @@ io.on('connection', (socket) => {
 
     socket.join(roomId);
     socket.emit('roomCreated', { roomId, maxRounds: MAX_ROUNDS });
-    console.log(`[DEBUG] 房間已建立 roomId=${roomId} hostSocketId=${socket.id}`);
   });
 
   socket.on('checkTakenCharacters', (roomId) => {
@@ -110,21 +104,11 @@ io.on('connection', (socket) => {
 
     io.to(roomId).emit('updatePlayers', room.players);
     io.to(roomId).emit('updateTakenCharacters', room.takenCharacters);
-    console.log(`[DEBUG] 玩家加入成功 roomId=${roomId} playerName=${playerName} socketId=${socket.id} 現時玩家數=${room.players.length}`);
   });
 
   socket.on('startNextRound', ({ roomId }) => {
-    console.log(`[DEBUG] 收到 startNextRound request！roomId=${roomId} 發出者socketId=${socket.id}`);
     const room = rooms[roomId];
-    if (!room) {
-      console.log(`[DEBUG] ⚠️ 搵唔到 room！roomId=${roomId}`);
-      return;
-    }
-    if (room.players.length === 0) {
-      console.log(`[DEBUG] ⚠️ room 入面冇玩家！roomId=${roomId}`);
-      return;
-    }
-    console.log(`[DEBUG] 準備開始回合，目前 room.round=${room.round}，room.players.length=${room.players.length}，房間內sockets=${JSON.stringify(Array.from(io.sockets.adapter.rooms.get(roomId) || []))}`);
+    if (!room || room.players.length === 0) return;
 
     if (room.round >= room.maxRounds) {
       room.isGameOver = true;
@@ -133,12 +117,10 @@ io.on('connection', (socket) => {
         message: `遊戲結束！已完成所有 ${room.maxRounds} 回合。`,
         leaderboard
       });
-      console.log(`[DEBUG] 遊戲已結束 roomId=${roomId}`);
       return;
     }
 
     room.round += 1;
-    console.log(`[DEBUG] room.round 已增加至 ${room.round}`);
     room.dispatches = {};
     room.disabledMinions = {};
 
@@ -157,7 +139,7 @@ io.on('connection', (socket) => {
 
     let eventInfo = { round: room.round, description: '' };
     if (room.round === 1) {
-      eventInfo.description = '無特殊事件，常規爭奪！';
+      eventInfo.description = '無特殊事件';
     } else if (room.round === 2) {
       eventInfo.description = '🔥 雙倍食糧事件：本回合中，搶奪者總和戰力最高的牢房糧食分數翻倍（x2）！';
     } else if (room.round === 3) {
@@ -169,19 +151,16 @@ io.on('connection', (socket) => {
       eventInfo.description = '🤡 逆向搶奪事件：本回合搶奪者改由「戰力最低者」獨得糧食（戰力至少為 1）。防守方規則不受影響！';
     }
 
-    console.log(`[DEBUG] 準備 emit roundStarted！round=${room.round} totalCells=${totalCells} roomId=${roomId}`);
     io.to(roomId).emit('roundStarted', {
       round: room.round,
       maxRounds: room.maxRounds,
       totalCells,
       eventInfo
     });
-    console.log(`[DEBUG] 已 emit roundStarted 完成`);
 
     room.players.forEach(p => {
       const disabledMinion = room.disabledMinions[p.id] || null;
       io.to(p.id).emit('playerRoundConfig', { disabledMinion });
-      console.log(`[DEBUG] 已 emit playerRoundConfig 俾 player socketId=${p.id} disabledMinion=${disabledMinion}`);
     });
 
     io.to(room.hostSocketId).emit('hostBonusNotice', {
@@ -189,7 +168,6 @@ io.on('connection', (socket) => {
       submittedCount: 0,
       totalPlayers: room.players.length
     });
-    console.log(`[DEBUG] 已 emit hostBonusNotice 俾主持人`);
   });
 
   socket.on('submitMinions', ({ roomId, dispatchMap }) => {
@@ -208,7 +186,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('triggerCalculateResults', ({ roomId }) => {
-    console.log(`[DEBUG] 收到 triggerCalculateResults request！roomId=${roomId} 現時room.round=${rooms[roomId] ? rooms[roomId].round : '房間不存在'}`);
     const room = rooms[roomId];
     if (!room) return;
 
@@ -266,6 +243,7 @@ io.on('connection', (socket) => {
         isDouble: i === doubleBonusCellNo,
         status: 'NONE',
         winnerName: '',
+        winnerIsOwner: false,
         power: 0,
         details: []
       };
@@ -302,7 +280,8 @@ io.on('connection', (socket) => {
           if (ownerPower > 0) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (獨守成功 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerIsOwner = true;
             summary[cellNo].power = ownerPower;
           } else {
             summary[cellNo].status = 'NONE';
@@ -318,13 +297,15 @@ io.on('connection', (socket) => {
           if (ownerPower > invaderPower) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (防守成功 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerIsOwner = true;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else if (invaderPower > ownerPower) {
             invader.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
             summary[cellNo].winnerName = invader.name;
+            summary[cellNo].winnerIsOwner = false;
             summary[cellNo].power = invaderPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
@@ -343,7 +324,8 @@ io.on('connection', (socket) => {
           if (ownerPower >= totalInvaderPower) {
             owner.totalScore += currentPoints;
             summary[cellNo].status = 'WIN';
-            summary[cellNo].winnerName = `${owner.name} (擊退所有搶奪者 +${currentPoints}分)`;
+            summary[cellNo].winnerName = owner.name;
+            summary[cellNo].winnerIsOwner = true;
             summary[cellNo].power = ownerPower;
             room.cellAccumulatedScores[cellNo] = 0;
           } else {
@@ -374,7 +356,8 @@ io.on('connection', (socket) => {
               const winner = targetInvaders[0];
               winner.totalScore += currentPoints;
               summary[cellNo].status = 'WIN';
-              summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+              summary[cellNo].winnerName = winner.name;
+              summary[cellNo].winnerIsOwner = false;
               summary[cellNo].power = targetPower;
               room.cellAccumulatedScores[cellNo] = 0;
             } else {
@@ -417,7 +400,8 @@ io.on('connection', (socket) => {
           const winner = targetPlayers[0];
           winner.totalScore += currentPoints;
           summary[cellNo].status = 'WIN';
-          summary[cellNo].winnerName = winner.name + (room.round === 4 ? ' (逆向最低戰力勝出)' : '');
+          summary[cellNo].winnerName = winner.name;
+              summary[cellNo].winnerIsOwner = false;
           summary[cellNo].power = targetPower;
           room.cellAccumulatedScores[cellNo] = 0;
         } else if (targetPlayers.length > 1) {
@@ -434,7 +418,6 @@ io.on('connection', (socket) => {
 
     const isLastRound = room.round >= room.maxRounds;
 
-    console.log(`[DEBUG] 準備 emit roundRevealed！round=${room.round} isLastRound=${isLastRound}`);
     io.to(roomId).emit('roundRevealed', {
       round: room.round,
       maxRounds: room.maxRounds,

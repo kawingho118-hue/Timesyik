@@ -99,7 +99,7 @@
 
       <!-- 回合特殊事件提示 -->
       <div id="host-event-banner" class="event-banner hidden">
-        📢 <b>當前開啟回合特殊事件：</b><span id="host-event-desc">--</span>
+        📢 <b>當前回合特殊事件：</b><span id="host-event-desc">--</span>
       </div>
       
       <button id="start-round-btn" onclick="startNextRound()">開始第 1 回合</button>
@@ -142,6 +142,7 @@
       </div>
 
       <button onclick="joinRoom()">確認加入遊戲</button>
+      <p id="setup-error-msg" class="hidden" style="color:#ef4444; font-size:13px; margin-top:8px; text-align:left;"></p>
     </div>
 
     <!-- 玩家遊戲操作介面 -->
@@ -162,7 +163,7 @@
 
       <!-- 玩家事件提示 -->
       <div id="player-event-banner" class="event-banner hidden">
-        📢 <b>當前開啟特殊事件：</b><span id="player-event-desc">--</span>
+        📢 <b>當前回合特殊事件：</b><span id="player-event-desc">--</span>
       </div>
 
       <!-- 分配 4 位手下的區域 -->
@@ -257,6 +258,7 @@
     }
 
     function onCharacterChange() {
+      clearSetupError();
       updatePreview();
     }
 
@@ -275,6 +277,7 @@
     }
 
     function onRoomCodeChange() {
+      clearSetupError();
       const code = document.getElementById('room-code-input').value.trim();
       if (code.length === 4) {
         socket.emit('checkTakenCharacters', code);
@@ -284,13 +287,30 @@
       }
     }
 
+    function showSetupError(msg) {
+      const el = document.getElementById('setup-error-msg');
+      if (el) {
+        el.innerText = msg;
+        el.classList.remove('hidden');
+      }
+    }
+
+    function clearSetupError() {
+      const el = document.getElementById('setup-error-msg');
+      if (el) {
+        el.innerText = '';
+        el.classList.add('hidden');
+      }
+    }
+
     function joinRoom() {
+      clearSetupError();
       const code = document.getElementById('room-code-input').value.trim();
       const charId = parseInt(document.getElementById('character-select').value);
 
-      if (!code) return alert('請輸入 4 位數房間 Code！');
-      if (!charId) return alert('請選擇一個角色！');
-      if (takenCharacterIds.includes(charId)) return alert('該角色已被選擇，請選取其他角色！');
+      if (!code) return showSetupError('請輸入 4 位數房間 Code！');
+      if (!charId) return showSetupError('請選擇一個角色！');
+      if (takenCharacterIds.includes(charId)) return showSetupError('該角色已被選擇，請選取其他角色！');
 
       const selectedChar = CHARACTERS.find(c => c.id === charId);
 
@@ -433,7 +453,7 @@
     });
 
     socket.on('errorMessage', (msg) => {
-      alert(msg);
+      showSetupError(msg);
     });
 
     socket.on('updatePlayers', (players) => {
@@ -530,7 +550,7 @@
       function renderCards(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
-        container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">📋 第 ${round} 回合結算結果：</h3>`;
+        container.innerHTML = `<h3 style="margin-bottom:10px; color:#38bdf8;">📋 第 ${round} 回合戰果揭曉</h3>`;
 
         for (let i = 1; i <= totalCells; i++) {
           const info = summary[i];
@@ -538,26 +558,31 @@
           let statusText = '';
           
           if (info.status === 'WIN') {
-            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 勝出者：${info.winnerName} (${info.power} 點戰力)</span>`;
+            const roleLabel = info.winnerIsOwner ? '房主' : '搶奪者';
+            const actionLabel = info.winnerIsOwner ? '防守成功' : '搶奪成功';
+            statusText = `<span style="color:#4ade80; font-weight:bold;">🏆 ${roleLabel} ${info.winnerName} (${info.power} 點戰力) ${actionLabel}! 獨得 ${info.points} 糧食!</span>`;
           } else if (info.status === 'TIE') {
             statusText = `<span style="color:#c084fc; font-weight:bold;">⚖️ 平手待裁決 (${info.power} 點戰力)</span>`;
           } else {
-            statusText = `<span style="color:#94a3b8;">⚪ 無人爭奪 / 糧食累積中</span>`;
+            statusText = `<span style="color:#94a3b8;">⚪無人爭奪</span>`;
           }
 
           let detailsHtml = '';
           if (info.details && info.details.length > 0) {
-            detailsHtml = `<div class="detail-list"><b>派遣詳情：</b><br>` + 
+            detailsHtml = `<div class="detail-list"><b>⚔️ 各玩家派駐戰力分佈：</b><br>` + 
               info.details.map(d => `• ${d.playerName} (來自 ${d.fromCellNo} 號牢房)：派出 ${d.power} 點戰力`).join('<br>') + 
               `</div>`;
           } else {
-            detailsHtml = `<div class="detail-list">無玩家派遣手下至此牢房</div>`;
+            detailsHtml = `<div class="detail-list">🔸無玩家派駐戰力</div>`;
           }
+
+          const ownerPlayer = players.find(p => Number(p.cellNo) === i);
+          const ownerNameSuffix = ownerPlayer ? ` (${ownerPlayer.name})` : '';
 
           container.innerHTML += `
             <div class="cell-card" style="${info.isDouble ? 'border: 2px solid #f59e0b; background: #451a03;' : ''}">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="font-size:16px;">🏰 ${i} 號牢房</b>
+                <b style="font-size:16px;">📍 ${i}號牢房${ownerNameSuffix}</b>
                 <span style="color:#f59e0b; font-weight:bold;">糧食分數：${info.points} 分 ${info.isDouble ? '🔥(雙倍爆發!)' : ''} ${isBonus ? '⭐(Bonus牢房)' : ''}</span>
               </div>
               <div>${statusText}</div>
@@ -574,11 +599,9 @@
 
     socket.on('tieResolved', ({ cellNo, winnerName, players }) => {
       renderPlayerList(players);
-      alert(`⚖️ ${cellNo} 號牢房平手裁決完畢！由 ${winnerName} 獲得該牢房糧食！`);
     });
 
     socket.on('gameOver', ({ message, leaderboard }) => {
-      alert(message);
       const qrSection = document.getElementById('qrcode-section');
       if (qrSection) {
         qrSection.classList.add('hidden');
